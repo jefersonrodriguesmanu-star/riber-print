@@ -281,7 +281,7 @@ const CONFIG_PADRAO={
 };
 const PAPEIS={
  admin:{nome:'Administrador',perms:'*'},
- gerente:{nome:'Gerente',perms:['fat','custos','criar','editar','cancelar','mover','pagar','autorizar','clientes','produtos','precos','ops','exportar','imprimir','estoque']},
+ gerente:{nome:'Gerente',perms:['colaboradores','fat','custos','criar','editar','cancelar','mover','pagar','autorizar','clientes','produtos','precos','ops','exportar','imprimir','estoque']},
  financeiro:{nome:'Financeiro',perms:['fat','custos','pagar','autorizar','clientes','exportar','mover']},
  atendimento:{nome:'Atendimento',perms:['criar','editar','mover','clientes']},
  producao:{nome:'Produção',perms:['mover','ops','imprimir']},
@@ -392,17 +392,23 @@ function App(){
   if(u){setOwner(!!(await u.isOwner()));setMe(await u.id())}})()},[]);
  useEffect(()=>{const h=()=>setView((location.hash||'#dashboard').slice(1));addEventListener('hashchange',h);return()=>removeEventListener('hashchange',h)},[]);
  const cfgD=useDoc(db,'erp/config');const cfg=useMemo(()=>({...CONFIG_PADRAO,...(cfgD.data||{}),empresa:{...CONFIG_PADRAO.empresa,...((cfgD.data||{}).empresa||{})}}),[cfgD.data]);
- const cli=useCol(db,'clientes');const prd=useCol(db,'produtos');const ped=useColTudo(db,'pedidos','criadoEm');const fch=useCol(db,'fechamentos');const pap=useCol(db,'papeis');const ins=useCol(db,'insumos');const maq=useCol(db,'maquinas');const imp=useCol(db,'impressoes',['data','desc']);const eqp=useCol(db,'equipe');
+ const cli=useCol(db,'clientes');const prd=useCol(db,'produtos');const ped=useColTudo(db,'pedidos','criadoEm');const fch=useCol(db,'fechamentos');const colb=useCol(db,'colaboradores');const pap=useCol(db,'papeis');const ins=useCol(db,'insumos');const maq=useCol(db,'maquinas');const imp=useCol(db,'impressoes',['data','desc']);const eqp=useCol(db,'equipe');
  // registra o visitante na equipe (para o administrador atribuir o papel)
  useEffect(()=>{if(!db||!me||!eqp.ok)return;if(!eqp.rows.some(r=>r.id===me))db.doc('equipe/'+me).set({desde:new Date().toISOString()}).catch(()=>{})},[db,me,eqp.ok]);
- const papel=owner?'admin':(pap.rows.find(r=>r.id===me)||{}).papel||null;
- const pode=useCallback(k=>{if(!papel)return false;const p=PAPEIS[papel];return!!p&&(p.perms==='*'||p.perms.includes(k))},[papel]);
- const ctx={db,cfg,clientes:cli.rows,produtos:prd.rows,pedidos:ped.rows,insumos:ins.rows,maquinas:maq.rows,impressoes:imp.rows,fechamentos:fch.rows,me,pode,papel,toast,owner,user,ir:v=>{location.hash=v;setOpen(false)},abrir:(t,id)=>setDetalhe({t,id}),setForm};
+ const meuPapel=pap.rows.find(r=>r.id===me)||{};const papel=owner?'admin':meuPapel.papel||null;
+ BAIXA={...BAIXA_PADRAO,...(cfg.baixaPedido||{})};
+ const pode=useCallback(k=>{if(!papel)return false;if(papel!=='admin'&&Array.isArray(meuPapel.perms))return meuPapel.perms.includes(k);const p=PAPEIS[papel];return!!p&&(p.perms==='*'||p.perms.includes(k))},[papel,JSON.stringify(meuPapel.perms||null)]);
+ // baixa automática de matéria-prima pelos pedidos concluídos (idempotente: cada ajuste tem chave única)
+ const baixando=useRef(false);const falhas=useRef(new Set());const [tick,setTick]=useState(0);
+ useEffect(()=>{if(!db||!papel||!ped.ok||!ins.ok||!maq.ok||baixando.current||!(pode('mover')||pode('ops')||pode('estoque')))return;const c={maquinas:maq.rows,insumos:ins.rows,cfgB:cfg.baixaPedido,me};
+  const fila=ped.rows.filter(p=>!falhas.current.has(p.id+':'+JSON.stringify(p.consumoLancado||{})+p.statusProd)&&precisaBaixa(p,c)).slice(0,20);if(!fila.length)return;baixando.current=true;
+  (async()=>{for(const p of fila){try{await aplicarConsumoPedido(db,p,c)}catch(e){falhas.current.add(p.id+':'+JSON.stringify(p.consumoLancado||{})+p.statusProd);console.warn('baixa',p.numero,e&&e.message)}}})().finally(()=>{baixando.current=false;setTimeout(()=>setTick(t=>t+1),300)})},[db,papel,ped.rows,ins.rows,maq.rows,cfg.baixaPedido,tick]);
+ const ctx={db,cfg,clientes:cli.rows,produtos:prd.rows,pedidos:ped.rows,insumos:ins.rows,maquinas:maq.rows,impressoes:imp.rows,fechamentos:fch.rows,colaboradores:colb.rows,equipe:eqp.rows,me,pode,papel,toast,owner,user,ir:v=>{location.hash=v;setOpen(false)},abrir:(t,id)=>setDetalhe({t,id}),setForm};
  useEffect(()=>{const k=e=>{const tg=e.target.tagName;if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();document.getElementById('busca')?.focus()}
   if(e.altKey&&e.code==='KeyN'&&!['INPUT','TEXTAREA','SELECT'].includes(tg)&&pode('criar')){e.preventDefault();setForm({t:'pedido'})}};addEventListener('keydown',k);return()=>removeEventListener('keydown',k)},[pode]);
  if(db===undefined)return html`<div className="empty" style=${{minHeight:'60vh',display:'grid',placeItems:'center'}}>Conectando ao banco de dados…</div>`;
  if(db===null)return html`<div className="empty" style=${{minHeight:'60vh',display:'grid',placeItems:'center'}}><div><div className="b">Banco de dados indisponível nesta visualização.</div><div className="sm">Abra o link do sistema com sua conta Claude conectada.</div></div></div>`;
- const NAV=[['Visão geral',[['dashboard','Dashboard','dash']]],['Comercial',[['pedidos','Pedidos','ped'],['kanban','Kanban','kb'],['clientes','Clientes','cli'],['produtos','Produtos e serviços','prd']]],['Financeiro',[['fechamentos','Fechamentos','fch'],['custos','Custos e simulador','cus']]],['Produção',[['impressao','Central de impressão','print'],['maquinas','Máquinas','cpu'],['descartes','Descartes','trash']]],['Estoque',[['insumos','Matéria-prima','box']]],['Administração',[['equipe','Equipe e permissões','eq'],['config','Configurações','cfg']]]];
+ const NAV=[['Visão geral',[['dashboard','Dashboard','dash']]],['Comercial',[['pedidos','Pedidos','ped'],['kanban','Kanban','kb'],['clientes','Clientes','cli'],['produtos','Produtos e serviços','prd']]],['Financeiro',[['fechamentos','Fechamentos','fch'],['custos','Custos e simulador','cus']]],['Produção',[['impressao','Central de impressão','print'],['maquinas','Máquinas','cpu'],['descartes','Descartes','trash']]],['Estoque',[['insumos','Matéria-prima','box']]],['Administração',[['colaboradores','Colaboradores','cli'],['equipe','Usuários e permissões','eq'],['config','Configurações','cfg']]]];
  const lento=[cli,prd,ped].some(c=>c.err==='lento');
  let page;
  if(!papel)page=html`<div className="card pad" style=${{maxWidth:520,margin:'60px auto',textAlign:'center'}}><h2>Acesso aguardando liberação</h2><p className="mut">Você já está registrado. Peça ao administrador para definir seu papel em <b>Equipe e permissões</b>.</p></div>`;
@@ -417,6 +423,7 @@ function App(){
  else if(view==='descartes')page=html`<${Descartes} ...${ctx}/>`;
  else if(view==='insumos')page=html`<${Insumos} ...${ctx}/>`;
  else if(view==='fechamentos')page=html`<${Fechamentos} ...${ctx}/>`;
+ else if(view==='colaboradores')page=html`<${Colaboradores} ...${ctx}/>`;
  else if(view==='custos')page=html`<${Custos} ...${ctx}/>`;
  else page=html`<${Dashboard} ...${ctx}/>`;
  return html`<div className="app">
@@ -561,12 +568,12 @@ async function proximoNumero(db,pedidos){
   await new Promise(k=>setTimeout(k,350+Math.random()*400))}
  return maxLocal+1}
 
-function PedidoForm({db,pedido,clienteId,clientes,produtos,pedidos,cfg,me,pode,toast,onClose,abrir}){
+function PedidoForm({db,pedido,clienteId,clientes,produtos,pedidos,cfg,me,pode,toast,onClose,abrir,colaboradores=[],maquinas=[]}){const colabs=colaboradores.filter(c=>c.ativo!==false).sort((a,b)=>a.nome.localeCompare(b.nome));
  const [cliId,setCliId]=useState(pedido?.clienteId||clienteId||'');const [cq,setCq]=useState('');const [cf,setCf]=useState(false);
  const novoIt=()=>({id:uid(),produtoId:'',varianteId:'',qtd:'1',preco:'',desconto:'0',obs:'',manual:false,origem:''});
  const [its,setIts]=useState(()=>pedido?pedido.itens.map(i=>({...i,qtd:String(i.qtdTexto||i.qtd).replace(/\./g,','),preco:String(i.preco),desconto:String(i.desconto||0),manual:true})):[novoIt()]);
  const [cab,setCab]=useState({prioridade:pedido?.prioridade||'normal',previsao:pedido?.previsao?pedido.previsao.slice(0,16):'',forma:pedido?.forma||'',canal:pedido?.canal||'balcao',
-  entrega:pedido?.entrega||'retirada',endereco:pedido?.endereco||'',frete:String(pedido?.frete||0),desconto:String(pedido?.desconto||0),obsInterna:pedido?.obsInterna||'',obsCliente:pedido?.obsCliente||'',cortesia:!!pedido?.cortesia,vendedor:pedido?.vendedor||'',operador:pedido?.operador||'',freteServico:pedido?.freteServico||'',fretePrazo:pedido?.fretePrazo||'',cepEntrega:pedido?.cepEntrega||''});
+  entrega:pedido?.entrega||'retirada',endereco:pedido?.endereco||'',frete:String(pedido?.frete||0),desconto:String(pedido?.desconto||0),obsInterna:pedido?.obsInterna||'',obsCliente:pedido?.obsCliente||'',cortesia:!!pedido?.cortesia,vendedor:pedido?.vendedor||'',operador:pedido?.operador||'',maquinaId:pedido?.maquinaId||'',perfilId:pedido?.perfilId||'',freteServico:pedido?.freteServico||'',fretePrazo:pedido?.fretePrazo||'',cepEntrega:pedido?.cepEntrega||''});
  const [cot,setCot]=useState(false);
  const [salv,setSalv]=useState(false);
  const cli=clientes.find(c=>c.id===cliId);const prodM=Object.fromEntries(produtos.map(p=>[p.id,p]));const cat=Object.fromEntries(cfg.categorias.map(c=>[c.id,c]));
@@ -620,8 +627,10 @@ function PedidoForm({db,pedido,clienteId,clientes,produtos,pedidos,cfg,me,pode,t
     <${F} l="Canal de venda"><select className="in" value=${cab.canal} onChange=${e=>setCab({...cab,canal:e.target.value})}>${Object.entries(CANAIS).map(([k,v])=>html`<option key=${k} value=${k}>${v}</option>`)}</select><//>
     <${F} l="Retirada ou entrega"><select className="in" value=${cab.entrega} onChange=${e=>setCab({...cab,entrega:e.target.value})}>${Object.entries(ENTREGA).map(([k,v])=>html`<option key=${k} value=${k}>${v}</option>`)}</select><//>
     ${cab.entrega!=='retirada'?html`<${F} l="Endereço de entrega"><input className="in" value=${cab.endereco} onChange=${e=>setCab({...cab,endereco:e.target.value})}/><//>`:html`<div></div>`}
-    <${F} l="Vendedor"><input className="in" value=${cab.vendedor} onChange=${e=>setCab({...cab,vendedor:e.target.value})}/><//>
-    <${F} l="Operador"><input className="in" value=${cab.operador} onChange=${e=>setCab({...cab,operador:e.target.value})}/><//>
+    <${F} l="Vendedor"><input className="in" list="dl-vend" value=${cab.vendedor} onChange=${e=>setCab({...cab,vendedor:e.target.value})}/><datalist id="dl-vend">${colabs.filter(c=>!(c.funcoes||[]).length||(c.funcoes||[]).some(x=>['vendedor','atendente','gerente'].includes(x))).map(c=>html`<option key=${c.id} value=${c.nome}/>`)}</datalist><//>
+    <${F} l="Operador"><input className="in" list="dl-oper" value=${cab.operador} onChange=${e=>setCab({...cab,operador:e.target.value})}/><datalist id="dl-oper">${colabs.filter(c=>!(c.funcoes||[]).length||(c.funcoes||[]).some(x=>['operador','producao'].includes(x))).map(c=>html`<option key=${c.id} value=${c.nome}/>`)}</datalist><//>
+    <${F} l="Máquina"><select className="in" value=${cab.maquinaId} onChange=${e=>{const m=maquinas.find(x=>x.id===e.target.value);setCab({...cab,maquinaId:e.target.value,perfilId:(m&&(m.perfis||[])[0]||{}).id||''})}}><option value="">Não informada</option>${maquinas.filter(m=>m.status!=='inativa').map(m=>html`<option key=${m.id} value=${m.id}>${m.nome}${m.tipo==='uv'?' (UV)':''}</option>`)}</select><//>
+    ${(()=>{const m=maquinas.find(x=>x.id===cab.maquinaId);return m&&(m.perfis||[]).length>1?html`<${F} l="Perfil de impressão"><select className="in" value=${cab.perfilId} onChange=${e=>setCab({...cab,perfilId:e.target.value})}>${m.perfis.map(pf=>html`<option key=${pf.id} value=${pf.id}>${pf.nome}</option>`)}</select><//>`:null})()}
     <label className="row sm" style=${{alignSelf:'end',minHeight:40}}><input type="checkbox" checked=${cab.cortesia} onChange=${e=>setCab({...cab,cortesia:e.target.checked})}/> Cortesia (sem cobrança)</label>
     <${F} l="Observações internas" className="span"><textarea className="in" value=${cab.obsInterna} onChange=${e=>setCab({...cab,obsInterna:e.target.value})}></textarea><//>
     <${F} l="Observações para o cliente"><textarea className="in" value=${cab.obsCliente} onChange=${e=>setCab({...cab,obsCliente:e.target.value})}></textarea><//>
@@ -966,10 +975,28 @@ const FINALIDADES={producao:'Produção',reimpressao:'Reimpressão',teste:'Teste
 const espera=ms=>new Promise(k=>setTimeout(k,ms));
 const grupoOk=(tipo,g)=>g==='geral'||(tipo==='textil'&&g==='dtf_textil')||(tipo==='uv'&&g==='dtf_uv');
 /* Consumo que o registro DEVE ter lançado: ficha técnica × metros impressos (descartes incluídos); o consumo real informado substitui o estimado. */
+/* Baixa pelos pedidos: quando ligada, cada pedido com a produção concluída abate a matéria-prima pela ficha;
+   os registros da Central de impressão passam a abater só os metros descartados (perdas), para não contar duas vezes. */
+const BAIXA_PADRAO={ativo:true,desde:'2026-11-20T22:44:00.000Z',textil:'',uv:''};
+let BAIXA=BAIXA_PADRAO;
 function consumoDesejado(reg,maquinas,insumos){if(reg.cancelado)return{};const m=maquinas.find(x=>x.id===reg.maquinaId);const pf=(m&&m.perfis||[]).find(p=>p.id===reg.perfilId);const out={};
- for(const f of (pf&&pf.ficha)||[]){const ins=insumos.find(i=>i.id===f.insumoId);if(!ins||!grupoOk(reg.tipo,ins.grupo))continue;out[f.insumoId]=r3(pn(f.qtd)*pn(reg.metros))}
- for(const [k,v] of Object.entries(reg.consumoReal||{}))if(v!==''&&v!=null){const ins=insumos.find(i=>i.id===k);if(ins&&grupoOk(reg.tipo,ins.grupo))out[k]=r3(pn(v))}
+ const porPedido=BAIXA&&BAIXA.ativo&&reg.criadoEm>=BAIXA.desde;const base=porPedido?pn(reg.descartados):pn(reg.metros);
+ for(const f of (pf&&pf.ficha)||[]){const ins=insumos.find(i=>i.id===f.insumoId);if(!ins||!grupoOk(reg.tipo,ins.grupo))continue;const q=r3(pn(f.qtd)*base);if(q)out[f.insumoId]=q}
+ if(!porPedido)for(const [k,v] of Object.entries(reg.consumoReal||{}))if(v!==''&&v!=null){const ins=insumos.find(i=>i.id===k);if(ins&&grupoOk(reg.tipo,ins.grupo))out[k]=r3(pn(v))}
  return out}
+function perfilBaixa(tipo,maquinas,cfgB){const sel=(cfgB||{})[tipo];if(sel){const [mi,pi]=sel.split('|');const m=maquinas.find(x=>x.id===mi);const pf=m&&(m.perfis||[]).find(x=>x.id===pi);if(pf)return pf}
+ const ms=maquinas.filter(x=>(x.tipo||'textil')===tipo);const m=ms.find(x=>x.id==='mq-scalle')||ms[0];return m&&(m.perfis||[])[0]||null}
+function consumoPedido(p,maquinas,insumos,cfgB){const B={...BAIXA_PADRAO,...(cfgB||{})};if(!B.ativo||p.cancelado||!(p.criadoEm>=B.desde)||!['pronto','entregue'].includes(p.statusProd))return{};const out={};
+ const mp=p.maquinaId&&maquinas.find(x=>x.id===p.maquinaId);const pfp=mp&&((mp.perfis||[]).find(x=>x.id===p.perfilId)||(mp.perfis||[])[0]);
+ for(const [tipo,met] of [['textil',p.totais?.mt||0],['uv',p.totais?.mu||0]]){if(!(met>0))continue;const pf=pfp&&(mp.tipo||'textil')===tipo?pfp:perfilBaixa(tipo,maquinas,B);
+  for(const f of (pf&&pf.ficha)||[]){const ins=insumos.find(i=>i.id===f.insumoId);if(!ins||!grupoOk(tipo,ins.grupo))continue;out[f.insumoId]=r3((out[f.insumoId]||0)+pn(f.qtd)*met)}}
+ return out}
+async function aplicarConsumoPedido(db,p,ctx){const des=consumoPedido(p,ctx.maquinas,ctx.insumos,ctx.cfgB);const lanc={...(p.consumoLancado||{})};let mudou=false;
+ for(const id of new Set([...Object.keys(des),...Object.keys(lanc)])){const antes=Number(lanc[id]||0),alvo=Number(des[id]||0);const dif=r3(alvo-antes);if(dif===0)continue;
+  await movimentarInsumo(db,id,-dif,{tipo:dif>0?'consumo':'estorno',ref:'Pedido #'+p.numero,lid:'ped:'+p.id+':'+id+':'+antes+'>'+alvo,por:ctx.me});
+  if(alvo)lanc[id]=alvo;else delete lanc[id];mudou=true;await db.doc('pedidos/'+p.id).update({consumoLancado:lanc})}
+ return mudou}
+const precisaBaixa=(p,ctx)=>{const des=consumoPedido(p,ctx.maquinas,ctx.insumos,ctx.cfgB);const l=p.consumoLancado||{};for(const k of new Set([...Object.keys(des),...Object.keys(l)]))if(r3(Number(des[k]||0)-Number(l[k]||0))!==0)return true;return false};
 /* Movimenta um insumo com trava (lease) e chave de idempotência: o mesmo lançamento nunca é aplicado duas vezes. */
 async function movimentarInsumo(db,insId,delta,mov){const ref=db.doc('insumos/'+insId);
  for(let t=0;t<10;t++){const l=await ref.acquire({holder:TAB,ttlMs:6000});
@@ -1164,18 +1191,69 @@ function Descartes({impressoes,maquinas,pode}){const [per,setPer]=useState('30d'
   <div className="grid g3"><${Bloco} t="Por motivo" d=${ag(r=>r.motivo)}/><${Bloco} t="Por máquina" d=${ag(r=>mq[r.maquinaId])}/><${Bloco} t="Por operador" d=${ag(r=>r.operador)}/></div></div>`}
 
 /* ---------------- equipe e permissões ---------------- */
+const PERMS=[['fat','Ver faturamento e valores'],['custos','Ver custos e margens'],['criar','Criar pedidos'],['editar','Editar pedidos'],['cancelar','Cancelar pedidos'],['mover','Mover no Kanban'],['pagar','Registrar pagamentos e fechamentos'],['autorizar','Autorizar produção faturada'],['ops','Atualizar ordens de produção'],['imprimir','Registrar impressões'],['estoque','Matéria-prima e máquinas'],['clientes','Cadastrar clientes'],['produtos','Cadastrar produtos'],['precos','Alterar preços no pedido'],['colaboradores','Cadastrar colaboradores'],['exportar','Exportar dados']];
 function Equipe({db,equipe,papeis,me,owner,user,pode,toast}){
- const [nomes,setNomes]=useState({});const admin=owner||pode('*')||(papeis.find(p=>p.id===me)||{}).papel==='admin';
+ const [nomes,setNomes]=useState({});const [perso,setPerso]=useState(null);const admin=owner||pode('*')||(papeis.find(p=>p.id===me)||{}).papel==='admin';
  useEffect(()=>{if(!user||!user.profiles||!equipe.length)return;user.profiles(equipe.map(e=>e.id)).then(r=>setNomes(Object.fromEntries(Object.entries(r||{}).map(([k,v])=>[k,v&&v.name||''])))).catch(()=>{})},[equipe.length]);
  const definir=async(id,papel)=>{try{if(papel)await db.doc('papeis/'+id).set({papel,em:new Date().toISOString(),por:me});else await db.doc('papeis/'+id).delete();toast('Papel atualizado')}catch(e){toast('Somente o dono do sistema ou editores podem alterar papéis.',1)}};
  return html`<div><h1>Equipe e permissões</h1><div className="sub" style=${{marginBottom:14}}>Cada pessoa que abre o link aparece aqui. Defina o papel para liberar o acesso. Compartilhe o link pelo botão <b>Compartilhar</b> do Claude, com nível <b>Colaborador</b> (Contributor) para quem precisa registrar dados.</div>
-  <div className="card"><div className="scroll"><table><thead><tr><th>Pessoa</th><th>Desde</th><th>Papel</th></tr></thead><tbody>
+  <div className="card"><div className="scroll"><table><thead><tr><th>Pessoa</th><th>Desde</th><th>Papel</th><th>Permissões</th></tr></thead><tbody>
   ${equipe.map(e=>{const pp=(papeis.find(p=>p.id===e.id)||{}).papel||'';const souEu=e.id===me;return html`<tr key=${e.id}><td><b>${nomes[e.id]||'Colaborador'}</b>${souEu&&html` <${Badge}>você<//>`}</td><td className="sm mut">${dhBR(e.desde)}</td>
-   <td>${souEu&&owner?html`<${Badge} c="b-ok">Administrador (dono)<//>`:html`<select className="in" style=${{width:220}} disabled=${!admin} value=${pp} onChange=${x=>definir(e.id,x.target.value)}><option value="">— Sem acesso —</option>${Object.entries(PAPEIS).map(([k,v])=>html`<option key=${k} value=${k}>${v.nome}</option>`)}</select>`}</td></tr>`})}
+   <td>${souEu&&owner?html`<${Badge} c="b-ok">Administrador (dono)<//>`:html`<select className="in" style=${{width:220}} disabled=${!admin} value=${pp} onChange=${x=>definir(e.id,x.target.value)}><option value="">— Sem acesso —</option>${Object.entries(PAPEIS).map(([k,v])=>html`<option key=${k} value=${k}>${v.nome}</option>`)}</select>`}</td>
+   <td>${pp&&pp!=='admin'&&!(souEu&&owner)?html`<button className="btn sm" disabled=${!admin} onClick=${()=>setPerso({id:e.id,papel:pp,perms:(papeis.find(p=>p.id===e.id)||{}).perms})}>${Array.isArray((papeis.find(p=>p.id===e.id)||{}).perms)?'Personalizadas':'Padrão do papel'} · editar</button>`:html`<span className="sm mut">${pp==='admin'||(souEu&&owner)?'Todas':'—'}</span>`}</td></tr>`})}
   </tbody></table></div></div>
   <div className="card pad" style=${{marginTop:14}}><h2>O que cada papel pode fazer</h2><div className="scroll" style=${{marginTop:8}}><table><thead><tr><th>Permissão</th>${Object.values(PAPEIS).map(p=>html`<th key=${p.nome}>${p.nome}</th>`)}</tr></thead><tbody>
-   ${[['fat','Ver faturamento e valores'],['custos','Ver custos e margens'],['criar','Criar pedidos'],['editar','Editar pedidos'],['cancelar','Cancelar pedidos'],['mover','Mover no Kanban'],['pagar','Registrar e estornar pagamentos'],['autorizar','Autorizar produção faturada'],['ops','Atualizar ordens de produção'],['imprimir','Registrar impressões'],['estoque','Matéria-prima e máquinas'],['clientes','Cadastrar clientes'],['produtos','Cadastrar produtos'],['exportar','Exportar dados']].map(([k,l])=>html`<tr key=${k}><td>${l}</td>${Object.values(PAPEIS).map(p=>html`<td key=${p.nome}>${p.perms==='*'||p.perms.includes(k)?'✓':''}</td>`)}</tr>`)}
-  </tbody></table></div></div></div>`}
+   ${PERMS.map(([k,l])=>html`<tr key=${k}><td>${l}</td>${Object.values(PAPEIS).map(p=>html`<td key=${p.nome}>${p.perms==='*'||p.perms.includes(k)?'✓':''}</td>`)}</tr>`)}
+  </tbody></table></div></div>
+  ${perso&&html`<${PermsDlg} ...${perso} nome=${nomes[perso.id]||'Colaborador'} onClose=${()=>setPerso(null)} onSalvar=${async perms=>{try{await db.doc('papeis/'+perso.id).set({papel:perso.papel,perms,em:new Date().toISOString(),por:me});toast('Permissões salvas');setPerso(null)}catch(e){toast('Somente o dono ou administradores podem alterar permissões.',1)}}}/>`}</div>`}
+function PermsDlg({id,papel,perms,nome,onClose,onSalvar}){const base=PAPEIS[papel]?.perms;const [sel,setSel]=useState(()=>Array.isArray(perms)?perms:(base==='*'?PERMS.map(x=>x[0]):[...(base||[])]));
+ return html`<${Modal} title=${'Permissões de '+nome} sub=${'Papel: '+(PAPEIS[papel]?.nome||papel)+'. Marque o que essa pessoa pode fazer.'} onClose=${onClose}>
+  <div style=${{display:'grid',gap:6}}>${PERMS.map(([k,l])=>html`<label key=${k} className="row sm" style=${{padding:'4px 0'}}><input type="checkbox" checked=${sel.includes(k)} onChange=${e=>setSel(e.target.checked?[...sel,k]:sel.filter(x=>x!==k))}/> ${l}</label>`)}</div>
+  <div className="row between" style=${{marginTop:14}}><button className="btn" onClick=${()=>onSalvar(null)}>Voltar ao padrão do papel</button><button className="btn p" onClick=${()=>onSalvar(sel)}>Salvar permissões</button></div><//>`}
+
+
+/* ---------------- colaboradores e comissões ---------------- */
+const FUNCOES={vendedor:'Vendedor',operador:'Operador de impressão',atendente:'Atendente',producao:'Produção / acabamento',entregador:'Entregador',gerente:'Gerente',outro:'Outro'};
+function Colaboradores(ctx){const {db,colaboradores=[],pedidos,pode,toast,owner,papel,equipe=[]}=ctx;const [aba,setAba]=useState('cadastro');const [ed,setEd]=useState(null);const [q,setQ]=useState('');const [ina,setIna]=useState(false);
+ const pode2=owner||papel==='admin'||pode('colaboradores');
+ const [per,setPer]=useState('mes');const [ci,setCi]=useState(intervalo('mes'));const [ini,fim]=per==='pers'?ci:intervalo(per);
+ const lista=colaboradores.filter(c=>(ina||c.ativo!==false)&&(!q||norm(c.nome).includes(norm(q)))).sort((a,b)=>a.nome.localeCompare(b.nome));
+ const nm=s=>norm(s||'').trim();
+ const com=useMemo(()=>{const ps=pedidos.filter(p=>!p.cancelado&&p.dia>=ini&&p.dia<=fim);return colaboradores.filter(c=>c.ativo!==false).map(c=>{const n=nm(c.nome);
+  const vend=ps.filter(p=>nm(p.vendedor)===n),oper=ps.filter(p=>nm(p.operador)===n);const mv=sum(vend,p=>(p.totais?.mt||0)+(p.totais?.mu||0)),mo=sum(oper,p=>(p.totais?.mt||0)+(p.totais?.mu||0)),fv=sum(vend,p=>p.total);
+  const cv=mv*pn(c.comissaoMetro)+fv*pn(c.comissaoPct)/100,co=mo*pn(c.comissaoOperador);return{...c,qv:vend.length,mv,fv,qo:oper.length,mo,cv,co,total:cv+co}}).filter(x=>x.qv||x.qo||x.total).sort((a,b)=>b.total-a.total)},[pedidos,colaboradores,ini,fim]);
+ const exportar=async()=>{const dl=await claude.use('downloads');if(!dl)return toast('Download indisponível',1);const L=[['Colaborador','Pedidos vendidos','Metros vendidos','Faturamento','Comissão venda','Pedidos operados','Metros operados','Comissão operação','Total']].concat(com.map(c=>[c.nome,c.qv,num(c.mv),num(c.fv),num(c.cv),c.qo,num(c.mo),num(c.co),num(c.total)]));
+  await dl.save({filename:'comissoes-'+ini+'-a-'+fim+'.csv',data:'﻿'+L.map(r=>r.map(x=>'"'+String(x??'').replace(/"/g,'""')+'"').join(';')).join('\n')})};
+ return html`<div><div className="row between" style=${{marginBottom:14}}><div><h1>Colaboradores</h1><div className="sub">${colaboradores.filter(c=>c.ativo!==false).length} ativos · vendedores e operadores aparecem para escolha nos pedidos</div></div>${pode2&&html`<button className="btn p" onClick=${()=>setEd({})}><${Ic} n="plus"/>Novo colaborador</button>`}</div>
+  <div className="tabs" style=${{marginBottom:14}}>${[['cadastro','Cadastro'],['comissoes','Comissões']].map(([k,l])=>html`<button key=${k} className=${aba===k?'on':''} onClick=${()=>setAba(k)}>${l}</button>`)}</div>
+  ${aba==='cadastro'&&html`<div className="card"><div className="row pad" style=${{borderBottom:'1px solid var(--line)'}}><input className="in" style=${{flex:'1 1 220px'}} placeholder="Buscar colaborador" value=${q} onChange=${e=>setQ(e.target.value)}/><label className="row sm mut"><input type="checkbox" checked=${ina} onChange=${e=>setIna(e.target.checked)}/> Mostrar inativos</label></div>
+   ${lista.length===0?html`<${Empty} t="Nenhum colaborador" s="Cadastre vendedores, operadores e demais funcionários para usar nos pedidos e calcular comissões."/>`:html`<div className="scroll"><table className="stack"><thead><tr><th>Nome</th><th>Funções</th><th>WhatsApp</th><th className="r">Comissão venda</th><th className="r">Comissão operação</th><th>Acesso ao sistema</th><th></th></tr></thead><tbody>
+    ${lista.map(c=>{const u=equipe.find(e=>e.id===c.usuarioId);return html`<tr key=${c.id} className="hov" onClick=${()=>pode2&&setEd(c)}><td><b>${c.nome}</b>${c.ativo===false?html` <${Badge}>inativo<//>`:''}</td><td className="sm">${(c.funcoes||[]).map(f=>FUNCOES[f]||f).join(', ')||'—'}</td><td className="nw">${fone(c.whatsapp)||'—'}</td>
+     <td className="r tab">${pn(c.comissaoMetro)?moeda(c.comissaoMetro)+'/m':''}${pn(c.comissaoPct)?(pn(c.comissaoMetro)?' + ':'')+pct(c.comissaoPct):''}${!pn(c.comissaoMetro)&&!pn(c.comissaoPct)?'—':''}</td><td className="r tab">${pn(c.comissaoOperador)?moeda(c.comissaoOperador)+'/m':'—'}</td>
+     <td className="sm">${u?(u.email||u.nome||'vinculado'):html`<span className="mut">sem login</span>`}</td><td className="r">${pode2&&html`<button className="btn sm">Editar</button>`}</td></tr>`})}</tbody></table></div>`}</div>`}
+  ${aba==='comissoes'&&html`<div className="card"><div className="row pad between" style=${{borderBottom:'1px solid var(--line)'}}><div className="row"><select className="in" style=${{width:190}} value=${per} onChange=${e=>setPer(e.target.value)}>${PERIODOS.map(([v,l])=>html`<option key=${v} value=${v}>${l}</option>`)}</select>
+    ${per==='pers'&&html`<input type="date" className="in" style=${{width:160}} value=${ci[0]} onChange=${e=>setCi([e.target.value,ci[1]])}/><input type="date" className="in" style=${{width:160}} value=${ci[1]} onChange=${e=>setCi([ci[0],e.target.value])}/>`}</div>
+    <div className="row"><b className="tab">Total: ${moeda(sum(com,c=>c.total))}</b><button className="btn sm" onClick=${exportar}><${Ic} n="dl" s=${14}/>Exportar</button></div></div>
+   <div className="pad sm mut">${dBR(ini)} a ${dBR(fim)}. Comissão de venda = metros vendidos × R$/m + % do faturamento; comissão de operação = metros operados × R$/m. Pedidos cancelados não entram.</div>
+   ${com.length===0?html`<${Empty} t="Sem comissões no período" s="Escolha vendedor e operador nos pedidos para as comissões aparecerem aqui."/>`:html`<div className="scroll"><table><thead><tr><th>Colaborador</th><th className="r">Vendas</th><th className="r">Metros vendidos</th><th className="r">Faturamento</th><th className="r">Comissão venda</th><th className="r">Operados</th><th className="r">Metros operados</th><th className="r">Comissão operação</th><th className="r">Total</th></tr></thead><tbody>
+    ${com.map(c=>html`<tr key=${c.id}><td><b>${c.nome}</b></td><td className="r tab">${c.qv}</td><td className="r tab">${num(c.mv)}</td><td className="r tab">${moeda(c.fv)}</td><td className="r tab">${moeda(c.cv)}</td><td className="r tab">${c.qo}</td><td className="r tab">${num(c.mo)}</td><td className="r tab">${moeda(c.co)}</td><td className="r tab b">${moeda(c.total)}</td></tr>`)}</tbody></table></div>`}</div>`}
+  ${ed&&html`<${ColaboradorForm} ...${ctx} c=${ed.id?ed:null} onClose=${()=>setEd(null)}/>`}</div>`}
+function ColaboradorForm({db,c,colaboradores=[],equipe=[],toast,onClose}){
+ const [f,setF]=useState(()=>({nome:'',funcoes:[],whatsapp:'',doc:'',email:'',admissao:'',comissaoMetro:'',comissaoPct:'',comissaoOperador:'',usuarioId:'',obs:'',ativo:true,...(c||{}),
+  comissaoMetro:String(c?.comissaoMetro??'').replace('.',','),comissaoPct:String(c?.comissaoPct??'').replace('.',','),comissaoOperador:String(c?.comissaoOperador??'').replace('.',',')}));const [s,setS]=useState(false);
+ const st=k=>e=>setF({...f,[k]:e.target.type==='checkbox'?e.target.checked:e.target.value});
+ const dup=colaboradores.find(x=>x.id!==c?.id&&norm(x.nome).trim()===norm(f.nome).trim());
+ const salvar=async()=>{if(!f.nome.trim())return toast('Informe o nome',1);if(dup)return toast('Já existe colaborador com esse nome',1);setS(true);
+  try{const {id,...b}=f;await db.doc('colaboradores/'+(c?.id||'co'+uid())).set({...b,nome:f.nome.trim(),whatsapp:dig(f.whatsapp),doc:dig(f.doc),comissaoMetro:pn(f.comissaoMetro),comissaoPct:pn(f.comissaoPct),comissaoOperador:pn(f.comissaoOperador),criadoEm:c?.criadoEm||new Date().toISOString(),atualizadoEm:new Date().toISOString()});
+   toast(c?'Colaborador atualizado':'Colaborador cadastrado');onClose()}catch(e){toast('Erro: '+(e.message||e.code),1)}finally{setS(false)}};
+ return html`<${Modal} lg title=${c?'Editar colaborador':'Novo colaborador'} onClose=${onClose}><div style=${{display:'grid',gap:14}}>
+  <div className="grid g3"><${F} l="Nome *" hint=${dup?'Já cadastrado':''}><input className="in" autoFocus value=${f.nome} onChange=${st('nome')}/><//><${F} l="WhatsApp"><input className="in" inputMode="tel" value=${f.whatsapp} onChange=${st('whatsapp')}/><//><${F} l="CPF"><input className="in" inputMode="numeric" value=${f.doc} onChange=${st('doc')}/><//>
+   <${F} l="E-mail"><input className="in" type="email" value=${f.email} onChange=${st('email')}/><//><${F} l="Data de admissão"><input type="date" className="in" value=${f.admissao} onChange=${st('admissao')}/><//>
+   <${F} l="Login no sistema" hint="Vincula a uma pessoa da Equipe e permissões"><select className="in" value=${f.usuarioId} onChange=${st('usuarioId')}><option value="">Sem login</option>${equipe.map(e=>html`<option key=${e.id} value=${e.id}>${e.email||e.nome||e.id.slice(0,8)}</option>`)}</select><//></div>
+  <div><span className="lb">Funções</span><div className="row" style=${{flexWrap:'wrap'}}>${Object.entries(FUNCOES).map(([k,l])=>html`<label key=${k} className="row sm card" style=${{padding:'6px 10px'}}><input type="checkbox" checked=${(f.funcoes||[]).includes(k)} onChange=${e=>setF({...f,funcoes:e.target.checked?[...(f.funcoes||[]),k]:(f.funcoes||[]).filter(x=>x!==k)})}/> ${l}</label>`)}</div></div>
+  <div className="card pad"><b>Comissões</b><div className="grid g3" style=${{marginTop:8}}><${F} l="Venda: R$ por metro"><input className="in tab" inputMode="decimal" value=${f.comissaoMetro} onChange=${st('comissaoMetro')} placeholder="0,00"/><//><${F} l="Venda: % do faturamento"><input className="in tab" inputMode="decimal" value=${f.comissaoPct} onChange=${st('comissaoPct')} placeholder="0"/><//><${F} l="Operação: R$ por metro impresso"><input className="in tab" inputMode="decimal" value=${f.comissaoOperador} onChange=${st('comissaoOperador')} placeholder="0,00"/><//></div></div>
+  <${F} l="Observações"><textarea className="in" value=${f.obs} onChange=${st('obs')}></textarea><//>
+  <div className="row between"><label className="row sm"><input type="checkbox" checked=${f.ativo} onChange=${st('ativo')}/> Ativo</label><button className="btn p" disabled=${s} onClick=${salvar}>${s?'Salvando…':c?'Salvar':'Cadastrar colaborador'}</button></div></div><//>`}
 
 /* ---------------- configurações ---------------- */
 /* ---------------- fechamentos de clientes ---------------- */
@@ -1324,6 +1402,8 @@ function ImportarScalle({db,cfg,produtos,clientes,pedidos,maquinas,insumos,toast
      itens:[{id:'it1',produtoId:'pr-dtf-metro',varianteId:'',qtd:metros,qtdTexto:(o.lista||[]).length>1?o.lista.join('+'):String(metros),preco:Number(o.preco||0),desconto:0,obs:'',nomeProduto:'DTF Têxtil (metro)',descricao:'DTF Têxtil (metro)',unidade:'metro_linear',grupo:'impressao',setor:'dtf_textil',tipoDtf:'textil',custo:r4(custoU)}],
      pagamentos:pags,autorizado:aut,etapaId:ET[etapa]?etapa:cfg.etapas[0].id,etapaDesde:quando,statusProd:sp,ordens,historico:[{em:quando,por:null,tipo:'criacao',para:etapa,obs:'Importado do Scalle'}],cancelado:o.status==='cancelado'?{em:quando,por:null,motivo:'Cancelado no Scalle'}:null,baixaEstoque:true,origem:'scalle',scalleId:o.id};
     const {id:_x,...c}=normalizar(p,null);await passo('pedidos/p-sc-'+o.id,c)}
+   {const nomes=new Map();for(const o of d.pedidos){for(const [n,f] of [[o.vendedor,'vendedor'],[o.operador,'operador']]){const t=(n||'').trim();if(!t)continue;const k=norm(t);const x=nomes.get(k)||{nome:t,funcoes:new Set()};x.funcoes.add(f);nomes.set(k,x)}}
+    for(const [k,x] of nomes){const id='co-sc-'+k.replace(/[^a-z0-9]+/g,'-');const cur=await db.doc('colaboradores/'+id).get();if(!cur.exists)await gravar('colaboradores/'+id,{nome:x.nome,funcoes:[...x.funcoes],whatsapp:'',doc:'',email:'',comissaoMetro:0,comissaoPct:0,comissaoOperador:0,usuarioId:'',obs:'Importado do Scalle',ativo:true,criadoEm:new Date().toISOString()})}}
    await gravar('contadores/pedidos',{ultimo:Math.max(num0+ord.length*(usarNum?0:1),...Object.values(numMap),...pedidos.filter(p=>p.origem!=='scalle').map(p=>p.numero||0))});
    const fo=[...(d.fechamentos||[])].sort((a,b)=>(a.criado||'').localeCompare(b.criado||''));const pedM=Object.fromEntries(d.pedidos.map(o=>[o.id,o]));
    for(let k=0;k<fo.length;k++){const f=fo[k];const ps=(f.pedidos||[]).filter(id=>numMap[id]).map(id=>{const o=pedM[id];return{id:'p-sc-'+id,numero:numMap[id],data:o.data||'',metros:Number(o.metros||0),valor:Number(o.total||0)}});
@@ -1340,7 +1420,7 @@ function ImportarScalle({db,cfg,produtos,clientes,pedidos,maquinas,insumos,toast
 
 function Config(ctx){const {db,cfg,owner,papel,toast}=ctx;
  const [c,setC]=useState(cfg);const [aba,setAba]=useState('empresa');const admin=owner||papel==='admin';useEffect(()=>setC(cfg),[cfg]);
- const salvar=async()=>{try{const ref=db.doc('erp/config');const cur=await ref.get();await ref.set({...(cur.exists?cur.data():{}),empresa:c.empresa,etapas:c.etapas,categorias:c.categorias,modelos:c.modelos,meta:pn(c.meta),msgFechamento:c.msgFechamento||MSG_FECH,frete:{...FRETE_PADRAO,...(c.frete||{})}});toast('Configurações salvas')}catch(e){toast('Somente o dono do sistema ou editores podem alterar as configurações.',1)}};
+ const salvar=async()=>{try{const ref=db.doc('erp/config');const cur=await ref.get();await ref.set({...(cur.exists?cur.data():{}),empresa:c.empresa,etapas:c.etapas,categorias:c.categorias,modelos:c.modelos,meta:pn(c.meta),msgFechamento:c.msgFechamento||MSG_FECH,frete:{...FRETE_PADRAO,...(c.frete||{})},baixaPedido:{...BAIXA_PADRAO,...(c.baixaPedido||{})}});toast('Configurações salvas')}catch(e){toast('Somente o dono do sistema ou editores podem alterar as configurações.',1)}};
  const E=k=>e=>setC({...c,empresa:{...c.empresa,[k]:e.target.value}});const upE=(i,k,v)=>setC({...c,etapas:c.etapas.map((x,j)=>j===i?{...x,[k]:v}:x)});
  const mov=(i,d)=>{const a=[...c.etapas];const j=i+d;if(j<0||j>=a.length)return;[a[i],a[j]]=[a[j],a[i]];setC({...c,etapas:a})};
  return html`<div><div className="row between" style=${{marginBottom:14}}><div><h1>Configurações</h1><div className="sub">Identidade, etapas do Kanban, categorias e mensagens</div></div>${admin&&html`<button className="btn p" onClick=${salvar}>Salvar configurações</button>`}</div>
@@ -1350,6 +1430,11 @@ function Config(ctx){const {db,cfg,owner,papel,toast}=ctx;
    <${F} l="WhatsApp"><input className="in" value=${c.empresa.whatsapp} onChange=${E('whatsapp')}/><//><${F} l="Endereço"><input className="in" value=${c.empresa.endereco} onChange=${E('endereco')}/><//>
    <${F} l="Chave PIX" hint="Usada em cobranças e comprovantes"><input className="in" value=${c.empresa.pix} onChange=${E('pix')}/><//><${F} l="Horário de funcionamento"><input className="in" value=${c.empresa.horario} onChange=${E('horario')} placeholder="Seg a Sex, 8h às 18h"/><//>
    <${F} l="Meta de faturamento mensal (R$)" hint="Aparece no Dashboard com a projeção do mês"><input className="in tab" value=${c.meta??''} onChange=${e=>setC({...c,meta:e.target.value})}/><//></div>
+   <div className="card pad" style=${{marginTop:12,display:'grid',gap:10}}><b>Baixa de matéria-prima pelos pedidos</b>
+    <label className="row sm"><input type="checkbox" checked=${!!(c.baixaPedido||BAIXA_PADRAO).ativo} onChange=${e=>setC({...c,baixaPedido:{...BAIXA_PADRAO,...(c.baixaPedido||{}),ativo:e.target.checked,desde:e.target.checked&&!(c.baixaPedido||BAIXA_PADRAO).ativo?new Date().toISOString():(c.baixaPedido||BAIXA_PADRAO).desde}})}/> Abater o estoque automaticamente quando a produção do pedido for concluída (pronto ou entregue)</label>
+    <div className="sm mut">Usa a ficha de consumo do perfil escolhido × metros do pedido. Se o pedido voltar etapa ou for cancelado, o estoque é devolvido. Vale para pedidos criados a partir de ${dhBR((c.baixaPedido||BAIXA_PADRAO).desde)}. Com isso ligado, a Central de impressão abate só os metros descartados.</div>
+    <div className="grid g2">${[['textil','Perfil para DTF Têxtil'],['uv','Perfil para DTF UV']].map(([k,l])=>html`<${F} key=${k} l=${l}><select className="in" value=${(c.baixaPedido||{})[k]||''} onChange=${e=>setC({...c,baixaPedido:{...BAIXA_PADRAO,...(c.baixaPedido||{}),[k]:e.target.value}})}><option value="">Automático (primeira máquina ${k==='uv'?'UV':'têxtil'})</option>
+     ${(ctx.maquinas||[]).filter(m=>(m.tipo||'textil')===k).flatMap(m=>(m.perfis||[]).map(pf=>html`<option key=${m.id+pf.id} value=${m.id+'|'+pf.id}>${m.nome} · ${pf.nome}</option>`))}</select><//>`)}</div></div>
    <div className="card pad" style=${{marginTop:12,display:'grid',gap:10}}><b>Frete (Melhor Envio)</b><div className="sm mut">Usado no botão “Cotar frete” dos pedidos com entrega. O peso do pacote é calculado: peso base + metros × peso por metro + peças × peso por peça (dá para ajustar na hora da cotação).</div>
     <div className="grid g4">${[['cepOrigem','CEP de origem'],['pesoBase','Peso base da embalagem (kg)'],['pesoMetro','Peso por metro de DTF (kg)'],['pesoPeca','Peso por peça de roupa (kg)'],['altura','Altura padrão (cm)'],['largura','Largura padrão (cm)'],['comprimento','Comprimento padrão (cm)']].map(([k,l])=>html`<${F} key=${k} l=${l}><input className="in tab" value=${(c.frete||FRETE_PADRAO)[k]??''} onChange=${e=>setC({...c,frete:{...FRETE_PADRAO,...(c.frete||{}),[k]:e.target.value}})}/><//>`)}
      <label className="row sm" style=${{alignSelf:'end',minHeight:40}}><input type="checkbox" checked=${!!(c.frete||{}).seguro} onChange=${e=>setC({...c,frete:{...FRETE_PADRAO,...(c.frete||{}),seguro:e.target.checked}})}/> Declarar valor por padrão</label></div></div>`}
