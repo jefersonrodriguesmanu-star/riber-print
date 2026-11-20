@@ -403,7 +403,7 @@ function App(){
  useEffect(()=>{if(!db||!papel||!ped.ok||!ins.ok||!maq.ok||baixando.current||!(pode('mover')||pode('ops')||pode('estoque')))return;const c={maquinas:maq.rows,insumos:ins.rows,cfgB:cfg.baixaPedido,me};
   const fila=ped.rows.filter(p=>!falhas.current.has(p.id+':'+JSON.stringify(p.consumoLancado||{})+p.statusProd)&&precisaBaixa(p,c)).slice(0,20);if(!fila.length)return;baixando.current=true;
   (async()=>{for(const p of fila){try{await aplicarConsumoPedido(db,p,c)}catch(e){falhas.current.add(p.id+':'+JSON.stringify(p.consumoLancado||{})+p.statusProd);console.warn('baixa',p.numero,e&&e.message)}}})().finally(()=>{baixando.current=false;setTimeout(()=>setTick(t=>t+1),300)})},[db,papel,ped.rows,ins.rows,maq.rows,cfg.baixaPedido,tick]);
- const ctx={db,cfg,clientes:cli.rows,produtos:prd.rows,pedidos:ped.rows,insumos:ins.rows,maquinas:maq.rows,impressoes:imp.rows,fechamentos:fch.rows,colaboradores:colb.rows,equipe:eqp.rows,me,pode,papel,toast,owner,user,ir:v=>{location.hash=v;setOpen(false)},abrir:(t,id)=>setDetalhe({t,id}),setForm};
+ const ctx={db,cfg,clientes:cli.rows,produtos:prd.rows,pedidos:ped.rows,insumos:ins.rows,maquinas:maq.rows,impressoes:imp.rows,fechamentos:fch.rows,colaboradores:colb.rows,equipe:eqp.rows,papeis:pap.rows,me,pode,papel,toast,owner,user,ir:v=>{location.hash=v;setOpen(false)},abrir:(t,id)=>setDetalhe({t,id}),setForm};
  useEffect(()=>{const k=e=>{const tg=e.target.tagName;if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();document.getElementById('busca')?.focus()}
   if(e.altKey&&e.code==='KeyN'&&!['INPUT','TEXTAREA','SELECT'].includes(tg)&&pode('criar')){e.preventDefault();setForm({t:'pedido'})}};addEventListener('keydown',k);return()=>removeEventListener('keydown',k)},[pode]);
  if(db===undefined)return html`<div className="empty" style=${{minHeight:'60vh',display:'grid',placeItems:'center'}}>Conectando ao banco de dados…</div>`;
@@ -442,6 +442,7 @@ function App(){
    <div className="wrap">${page}</div>
   </div>
   ${detalhe&&detalhe.t==='pedido'&&html`<${PedidoDetalhe} ...${ctx} id=${detalhe.id} onClose=${()=>setDetalhe(null)}/>`}
+  ${detalhe&&detalhe.t==='etiqueta'&&html`<${Etiqueta} ...${ctx} id=${detalhe.id} onClose=${()=>setDetalhe(null)}/>`}
   ${detalhe&&detalhe.t==='cliente'&&html`<${ClienteDetalhe} ...${ctx} id=${detalhe.id} onClose=${()=>setDetalhe(null)}/>`}
   ${form&&form.t==='pedido'&&html`<${PedidoForm} ...${ctx} pedido=${form.pedido} clienteId=${form.clienteId} onClose=${()=>setForm(null)}/>`}
   ${form&&form.t==='cliente'&&html`<${ClienteForm} ...${ctx} cliente=${form.cliente} onClose=${()=>setForm(null)}/>`}
@@ -573,7 +574,7 @@ function PedidoForm({db,pedido,clienteId,clientes,produtos,pedidos,cfg,me,pode,t
  const novoIt=()=>({id:uid(),produtoId:'',varianteId:'',qtd:'1',preco:'',desconto:'0',obs:'',manual:false,origem:''});
  const [its,setIts]=useState(()=>pedido?pedido.itens.map(i=>({...i,qtd:String(i.qtdTexto||i.qtd).replace(/\./g,','),preco:String(i.preco),desconto:String(i.desconto||0),manual:true})):[novoIt()]);
  const [cab,setCab]=useState({prioridade:pedido?.prioridade||'normal',previsao:pedido?.previsao?pedido.previsao.slice(0,16):'',forma:pedido?.forma||'',canal:pedido?.canal||'balcao',
-  entrega:pedido?.entrega||'retirada',endereco:pedido?.endereco||'',frete:String(pedido?.frete||0),desconto:String(pedido?.desconto||0),obsInterna:pedido?.obsInterna||'',obsCliente:pedido?.obsCliente||'',cortesia:!!pedido?.cortesia,vendedor:pedido?.vendedor||'',operador:pedido?.operador||'',maquinaId:pedido?.maquinaId||'',perfilId:pedido?.perfilId||'',freteServico:pedido?.freteServico||'',fretePrazo:pedido?.fretePrazo||'',cepEntrega:pedido?.cepEntrega||''});
+  entrega:pedido?.entrega||'retirada',endereco:pedido?.endereco||'',frete:String(pedido?.frete||0),desconto:String(pedido?.desconto||0),obsInterna:pedido?.obsInterna||'',obsCliente:pedido?.obsCliente||'',cortesia:!!pedido?.cortesia,vendedor:pedido?.vendedor||'',operador:pedido?.operador||'',maquinaId:pedido?.maquinaId||'',perfilId:pedido?.perfilId||'',freteServico:pedido?.freteServico||'',freteServicoId:pedido?.freteServicoId||'',fretePrazo:pedido?.fretePrazo||'',cepEntrega:pedido?.cepEntrega||''});
  const [cot,setCot]=useState(false);
  const [salv,setSalv]=useState(false);
  const cli=clientes.find(c=>c.id===cliId);const prodM=Object.fromEntries(produtos.map(p=>[p.id,p]));const cat=Object.fromEntries(cfg.categorias.map(c=>[c.id,c]));
@@ -641,14 +642,14 @@ function PedidoForm({db,pedido,clienteId,clientes,produtos,pedidos,cfg,me,pode,t
    <div className="row between sm"><span className="mut">Serviços</span><span className="tab">${moeda(t.servicos)}</span></div>
    ${t.descItens>0&&html`<div className="row between sm"><span className="mut">Descontos nos itens</span><span className="tab">−${moeda(t.descItens)}</span></div>`}
    <div className="row between sm"><span className="mut">Desconto geral</span><input className="in tab" style=${{width:110,minHeight:34,textAlign:'right'}} value=${cab.desconto} onChange=${e=>setCab({...cab,desconto:e.target.value})}/></div>
-   <div className="row between sm"><span className="mut">Frete${cab.freteServico?html`<br/><span style=${{fontSize:11.5}}>${cab.freteServico}${cab.fretePrazo?' · '+cab.fretePrazo+' dias úteis':''}</span>`:''}</span><input className="in tab" style=${{width:110,minHeight:34,textAlign:'right'}} value=${cab.frete} onChange=${e=>setCab({...cab,frete:e.target.value,freteServico:'',fretePrazo:''})}/></div>
+   <div className="row between sm"><span className="mut">Frete${cab.freteServico?html`<br/><span style=${{fontSize:11.5}}>${cab.freteServico}${cab.fretePrazo?' · '+cab.fretePrazo+' dias úteis':''}</span>`:''}</span><input className="in tab" style=${{width:110,minHeight:34,textAlign:'right'}} value=${cab.frete} onChange=${e=>setCab({...cab,frete:e.target.value,freteServico:'',freteServicoId:'',fretePrazo:''})}/></div>
    ${cab.entrega!=='retirada'&&ONLINE()&&html`<button className="btn sm" onClick=${()=>setCot(true)}>Cotar frete (Melhor Envio)</button>`}
    <div className="row between" style=${{borderTop:'1px solid var(--line)',paddingTop:10,fontSize:20,fontWeight:700}}><span>Total</span><span className="tab">${moeda(t.total)}</span></div>
    ${pode('custos')&&html`<div className="sm" style=${{background:'var(--soft)',borderRadius:9,padding:10,display:'grid',gap:3}}><div className="row between"><span className="mut">Custo estimado</span><span className="tab">${moeda(t.custo)}</span></div><div className="row between"><span className="mut">Lucro estimado</span><span className="tab">${moeda(t.lucro)}</span></div><div className="row between"><span className="mut">Margem</span><b className="tab" style=${{color:t.margem<20?'var(--red2)':''}}>${pct(t.margem)}</b></div></div>`}
    <div className="row">${t.mt>0&&html`<${Badge} c="b-red">${num(t.mt)} m Têxtil<//>`}${t.mu>0&&html`<${Badge} c="b-warn">${num(t.mu)} m UV<//>`}${t.pecas>0&&html`<${Badge}>${t.pecas} peças<//>`}</div>
    <button className="btn p" disabled=${salv||invalido} onClick=${salvar}>${salv?'Salvando…':pedido?'Salvar alterações':'Criar pedido'}</button>
   </div></div></div>
-  ${cot&&html`<${CotarFrete} cfg=${cfg} cli=${cli} t=${t} cep=${cab.cepEntrega||cli?.cep||''} onClose=${()=>setCot(false)} onEscolher=${o=>{setCab({...cab,frete:String(o.preco).replace('.',','),freteServico:(o.empresa+' '+o.servico).trim(),fretePrazo:o.prazo,cepEntrega:o.cep,endereco:cab.endereco||o.endereco||''});setCot(false)}}/>`}<//>`}
+  ${cot&&html`<${CotarFrete} cfg=${cfg} cli=${cli} t=${t} cep=${cab.cepEntrega||cli?.cep||''} onClose=${()=>setCot(false)} onEscolher=${o=>{setCab({...cab,frete:String(o.preco).replace('.',','),freteServico:(o.empresa+' '+o.servico).trim(),freteServicoId:o.id,fretePrazo:o.prazo,cepEntrega:o.cep,endereco:cab.endereco||o.endereco||''});setCot(false)}}/>`}<//>`}
 function CotarFrete({cfg,cli,t,cep,onClose,onEscolher}){const F0={...FRETE_PADRAO,...(cfg.frete||{})};
  const pesoAuto=r3(pn(F0.pesoBase)+(t.mt+t.mu)*pn(F0.pesoMetro)+t.pecas*pn(F0.pesoPeca));
  const [f,setF]=useState({cep:dig(cep),peso:String(pesoAuto||0.3).replace('.',','),altura:String(F0.altura),largura:String(F0.largura),comprimento:String(F0.comprimento),seguro:!!F0.seguro});
@@ -703,6 +704,7 @@ function PedidoDetalhe({db,id,pedidos,clientes,produtos,cfg,me,pode,toast,onClos
    ${!p.cancelado&&pode('editar')&&html`<button className="btn" onClick=${()=>{onClose();setForm({t:'pedido',pedido:p})}}>Editar</button>`}
    ${pode('criar')&&html`<button className="btn" onClick=${duplicar}>Duplicar</button>`}
    <button className="btn" onClick=${comprovante}><${Ic} n="dl" s=${15}/>Comprovante</button>
+   ${ONLINE()&&p.entrega&&p.entrega!=='retirada'&&!p.cancelado&&html`<button className="btn" onClick=${()=>abrir('etiqueta',p.id)}>${p.etiqueta&&p.etiqueta.url?'Etiqueta de envio':'Gerar etiqueta de envio'}</button>`}
    ${!p.cancelado&&pode('cancelar')&&html`<button className="btn d" onClick=${()=>setDlg('cancel')}>Cancelar</button>`}</div>
   <div className="grid" style=${{gridTemplateColumns:'minmax(0,1fr) 300px',gap:14}}>
    <div style=${{display:'grid',gap:12,alignContent:'start'}}>
@@ -750,7 +752,7 @@ function MotivoDlg({titulo,aviso,onClose,onOk,bloqueado}){const [m,setM]=useStat
  <div className="row" style=${{justifyContent:'flex-end',marginTop:12}}><button className="btn" onClick=${onClose}>Voltar</button><button className="btn p" disabled=${bloqueado||!m.trim()} onClick=${()=>onOk(m.trim())}>Confirmar</button></div><//>`}
 
 /* ---------------- kanban ---------------- */
-async function moverPedido({db,p,etapa,me,pode,produtos,toast}){
+async function moverPedido({db,p,etapa,me,pode,produtos,toast,abrir}){
  if(p.etapaId===etapa.id)return;
  if(!pode('mover'))return toast('Você não tem permissão para mover pedidos.',1);
  if(p.cancelado&&!etapa.cancela)return toast('Pedido #'+p.numero+' está cancelado.',1);
@@ -767,7 +769,8 @@ async function moverPedido({db,p,etapa,me,pode,produtos,toast}){
     const mov=[...(pr.movimentos||[]),...porProd[pid].map(i=>({em:agora,var:i.varianteId,q:-i.qtd,tipo:'venda',ref:'#'+p.numero}))].slice(-200);
     await db.doc('produtos/'+pid).update({variantes,movimentos:mov})}
    np.baixaEstoque=true;np.entregueEm=agora}
-  const {id:_x,...c}=normalizar(np,me);await db.doc('pedidos/'+p.id).set(c);toast('#'+p.numero+' → '+etapa.nome)}
+  const {id:_x,...c}=normalizar(np,me);await db.doc('pedidos/'+p.id).set(c);toast('#'+p.numero+' → '+etapa.nome);
+  if(ONLINE()&&abrir&&np.entrega&&np.entrega!=='retirada'&&!np.cancelado&&['pronto','entregue'].includes(c.statusProd)&&!(p.etiqueta&&p.etiqueta.id))abrir('etiqueta',p.id)}
  catch(e){toast('Erro ao mover: '+(e.message||e.code),1)}}
 
 function Kanban(ctx){
@@ -1214,6 +1217,54 @@ function PermsDlg({id,papel,perms,nome,onClose,onSalvar}){const base=PAPEIS[pape
   <div className="row between" style=${{marginTop:14}}><button className="btn" onClick=${()=>onSalvar(null)}>Voltar ao padrão do papel</button><button className="btn p" onClick=${()=>onSalvar(sel)}>Salvar permissões</button></div><//>`}
 
 
+
+/* ---------------- etiqueta de envio (Melhor Envio) ---------------- */
+async function meAcao(body){const sb=window.RP_SB;if(!sb)throw new Error('Disponível só na versão hospedada');const {data,error}=await sb.functions.invoke('frete',{body});
+ if(error){let m=error.message;try{const j=await error.context.json();m=j.erro||m}catch(e){}throw new Error(m)}if(data&&data.erro&&data.ok!==false)throw new Error(data.erro);return data}
+function Etiqueta({db,id,pedidos,clientes,cfg,me,toast,onClose,pode}){const p=pedidos.find(x=>x.id===id);const cli=p&&clientes.find(c=>c.id===p.clienteId);
+ const F0={...FRETE_PADRAO,...(cfg.frete||{})};const R=F0.remetente||{};const E=cfg.empresa;
+ const rem={nome:R.nome||E.nome,documento:R.documento||E.cnpj,ie:R.ie||'',telefone:R.telefone||E.whatsapp,email:R.email||'',cep:R.cep||F0.cepOrigem,endereco:R.endereco||'',numero:R.numero||'',complemento:R.complemento||'',bairro:R.bairro||'',cidade:R.cidade||'',uf:R.uf||''};
+ const [d,setD]=useState(()=>({nome:cli?.nome||p?.clienteNome||'',documento:cli?.doc||'',telefone:cli?.whatsapp||cli?.telefone||'',email:cli?.email||'',cep:p?.cepEntrega||cli?.cep||'',endereco:cli?.endereco||'',numero:cli?.numero||'',complemento:cli?.complemento||'',bairro:cli?.bairro||'',cidade:cli?.cidade||'',uf:cli?.uf||''}));
+ const t=p?.totais||{mt:0,mu:0,pecas:0};const pesoAuto=r3(pn(F0.pesoBase)+((t.mt||0)+(t.mu||0))*pn(F0.pesoMetro)+(t.pecas||0)*pn(F0.pesoPeca));
+ const [v,setV]=useState({peso:String(pesoAuto||0.3).replace('.',','),altura:String(F0.altura),largura:String(F0.largura),comprimento:String(F0.comprimento),seguro:!!F0.seguro});
+ const [serv,setServ]=useState(p?.freteServicoId?{id:p.freteServicoId,nome:p.freteServico,preco:p.frete,prazo:p.fretePrazo}:null);const [cot,setCot]=useState(null);
+ const [saldo,setSaldo]=useState(null);const [st,setSt]=useState({b:false,erro:'',passo:''});const [conf,setConf]=useState(false);const [rast,setRast]=useState(null);
+ useEffect(()=>{if(!p?.etiqueta?.url)meAcao({acao:'saldo'}).then(r=>setSaldo(r.saldo)).catch(()=>{})},[]);
+ useEffect(()=>{if(dig(d.cep).length===8&&(!d.endereco||!d.cidade))buscaCep(dig(d.cep)).then(r=>r&&setD(x=>({...x,endereco:x.endereco||r.logradouro,bairro:x.bairro||r.bairro,cidade:x.cidade||r.localidade,uf:x.uf||r.uf}))).catch(()=>{})},[d.cep]);
+ if(!p)return null;const e=p.etiqueta;
+ const faltam=[['nome','nome'],['cep','CEP'],['endereco','endereço'],['numero','número'],['bairro','bairro'],['cidade','cidade'],['uf','UF']].filter(([k])=>!String(d[k]||'').trim()).map(x=>x[1]);
+ const faltamR=[['nome','nome'],['documento','CNPJ/CPF'],['telefone','telefone'],['cep','CEP'],['endereco','endereço'],['numero','número'],['bairro','bairro'],['cidade','cidade'],['uf','UF']].filter(([k])=>!String(rem[k]||'').trim()).map(x=>x[1]);
+ if(dig(d.documento).length!==11&&dig(d.documento).length!==14)faltam.push('CPF/CNPJ');
+ const produtos=(p.itens||[]).map(i=>{const tot=r2(i.qtd*i.preco-(i.desconto||0));const inteiro=i.unidade==='unidade'&&Number.isInteger(i.qtd);return{nome:(i.descricao||i.nomeProduto||'Item').slice(0,90)+(inteiro?'':' ('+num(i.qtd)+' '+(UNID[i.unidade]||['',''])[1]+')'),quantidade:inteiro?i.qtd:1,valor:inteiro?r2(tot/i.qtd)||1:tot||1}});
+ const emitir=async()=>{setConf(false);setSt({b:true,erro:'',passo:'Enviando ao Melhor Envio, pagando com o saldo e gerando a etiqueta…'});
+  try{const r=await meAcao({acao:'emitir',servico:serv.id,remetente:rem,destinatario:d,volume:{peso:pn(v.peso),altura:pn(v.altura),largura:pn(v.largura),comprimento:pn(v.comprimento)},seguro:v.seguro?p.total:0,produtos,tag:'Pedido #'+p.numero,idExistente:e&&e.id&&!e.url?e.id:null});
+   const et={id:r.id||e?.id||null,servico:serv.nome,servicoId:serv.id,preco:r.total||r.preco||serv.preco||null,protocolo:r.protocolo||null,comprada:!!r.compra||!!e?.comprada,gerada:!!r.gerada,url:r.url||null,em:new Date().toISOString(),por:me,erro:r.ok?null:r.erro};
+   await db.doc('pedidos/'+p.id).update({etiqueta:et,historico:[...(p.historico||[]),{em:et.em,por:me,tipo:'etiqueta',obs:r.ok?'Etiqueta gerada ('+serv.nome+')':'Etiqueta: '+r.erro}]});
+   if(r.ok){setSt({b:false,erro:'',passo:''});toast('Etiqueta gerada');if(r.url)window.open(r.url,'_blank','noopener')}else setSt({b:false,erro:r.erro,passo:''})}
+  catch(x){setSt({b:false,erro:x.message,passo:''})}};
+ const imprimir=async()=>{try{const r=await meAcao({acao:'imprimir',id:e.id});if(r.url){await db.doc('pedidos/'+p.id).update({etiqueta:{...e,url:r.url}});window.open(r.url,'_blank','noopener')}}catch(x){toast(x.message,1)}};
+ const rastrear=async()=>{try{const r=await meAcao({acao:'rastrear',id:e.id});setRast(r);if(r.rastreio&&r.rastreio!==e.rastreio)await db.doc('pedidos/'+p.id).update({etiqueta:{...e,rastreio:r.rastreio,status:r.status}})}catch(x){toast(x.message,1)}};
+ const I=(o,set,k,l,cls)=>html`<${F} key=${k} l=${l} className=${cls||''}><input className="in" value=${o[k]??''} onChange=${x=>set({...o,[k]:x.target.value})}/><//>`;
+ if(e&&e.url)return html`<${Modal} title=${'Etiqueta do pedido #'+p.numero} sub=${e.servico+(e.preco?' · '+moeda(e.preco):'')} onClose=${onClose}>
+  <div style=${{display:'grid',gap:10}}><div className="row"><${Badge} c="b-ok">Etiqueta gerada<//><span className="sm mut">${dhBR(e.em)}${e.protocolo?' · protocolo '+e.protocolo:''}</span></div>
+   ${(rast||e).rastreio&&html`<div><span className="sm mut">Código de rastreio:</span> <b className="tab">${(rast||e).rastreio}</b></div>`}
+   ${rast&&html`<div className="sm">Situação: <b>${rast.status||'—'}</b>${rast.link?html` · <a href=${rast.link} target="_blank" rel="noreferrer">acompanhar</a>`:''}</div>`}
+   <div className="row"><a className="btn p" href=${e.url} target="_blank" rel="noreferrer"><${Ic} n="print" s=${15}/>Imprimir etiqueta</a><button className="btn" onClick=${imprimir}>Novo link de impressão</button><button className="btn" onClick=${rastrear}>Rastrear</button>
+    ${((rast||e).rastreio)&&p.clienteWhats&&html`<a className="btn" href=${waLink(p.clienteWhats,'Olá, '+(p.clienteNome||'').split(' ')[0]+'! Seu pedido #'+p.numero+' foi enviado por '+e.servico+'. Código de rastreio: '+(rast||e).rastreio+(rast&&rast.link?'\nAcompanhe: '+rast.link:''))} target="_blank" rel="noreferrer"><${Ic} n="wa" s=${15}/>Enviar rastreio</a>`}</div></div><//>`;
+ return html`<${Modal} lg title=${'Gerar etiqueta de envio · pedido #'+p.numero} sub="Melhor Envio — o valor é pago com o saldo da sua conta Melhor Envio" onClose=${onClose}>
+  <div style=${{display:'grid',gap:14}}>
+   ${faltamR.length>0&&html`<div className="card pad sm" style=${{borderColor:'var(--warn)'}}>Complete o remetente em <b>Configurações → Empresa → Frete</b>: falta ${faltamR.join(', ')}.</div>`}
+   <div><b>Destinatário</b><div className="grid g4" style=${{marginTop:6}}>${I(d,setD,'nome','Nome')}${I(d,setD,'documento','CPF ou CNPJ')}${I(d,setD,'telefone','Telefone')}${I(d,setD,'email','E-mail')}${I(d,setD,'cep','CEP')}${I(d,setD,'endereco','Endereço')}${I(d,setD,'numero','Número')}${I(d,setD,'complemento','Complemento')}${I(d,setD,'bairro','Bairro')}${I(d,setD,'cidade','Cidade')}${I(d,setD,'uf','UF')}</div></div>
+   <div><b>Pacote</b><div className="grid g4" style=${{marginTop:6}}>${I(v,setV,'peso','Peso (kg)')}${I(v,setV,'altura','Altura (cm)')}${I(v,setV,'largura','Largura (cm)')}${I(v,setV,'comprimento','Comprimento (cm)')}</div>
+    <label className="row sm" style=${{marginTop:6}}><input type="checkbox" checked=${v.seguro} onChange=${x=>setV({...v,seguro:x.target.checked})}/> Declarar valor (${moeda(p.total)})</label></div>
+   <div className="row between card pad"><div><b>Serviço</b><div className="sm">${serv?serv.nome+(serv.preco?' · '+moeda(serv.preco):'')+(serv.prazo?' · '+serv.prazo+' dias úteis':''):html`<span className="mut">Escolha a transportadora</span>`}</div></div><button className="btn" onClick=${()=>setCot(true)}>${serv?'Trocar / cotar de novo':'Cotar frete'}</button></div>
+   <div className="sm mut">Declaração de conteúdo: ${produtos.map(x=>x.quantidade+'× '+x.nome+' '+moeda(x.valor)).join('; ')}</div>
+   ${st.passo&&html`<div className="sm">${st.passo}</div>`}${st.erro&&html`<div className="sm" style=${{color:'var(--red2)'}}>${st.erro}</div>`}
+   <div className="row between"><span className="sm mut">${saldo!=null?'Saldo no Melhor Envio: '+moeda(saldo):''}</span>
+    ${!conf?html`<button className="btn p" disabled=${st.b||!serv||faltam.length>0||faltamR.length>0||!pode('editar')} title=${faltam.length?'Falta: '+faltam.join(', '):''} onClick=${()=>setConf(true)}>${faltam.length?'Falta: '+faltam.join(', '):'Gerar etiqueta'}</button>`
+    :html`<div className="row"><span className="sm b">Confirmar compra de ${serv.preco?moeda(serv.preco):'a etiqueta'} com o saldo do Melhor Envio?</span><button className="btn" onClick=${()=>setConf(false)}>Voltar</button><button className="btn p" onClick=${emitir}>Confirmar e gerar</button></div>`}</div></div>
+  ${cot&&html`<${CotarFrete} cfg=${cfg} cli=${cli} t=${{...t,total:p.total}} cep=${d.cep} onClose=${()=>setCot(null)} onEscolher=${o=>{setServ({id:o.id,nome:(o.empresa+' '+o.servico).trim(),preco:o.preco,prazo:o.prazo});if(o.cep)setD(x=>({...x,cep:o.cep}));setCot(null)}}/>`}<//>`}
+
 /* ---------------- colaboradores e comissões ---------------- */
 const FUNCOES={vendedor:'Vendedor',operador:'Operador de impressão',atendente:'Atendente',producao:'Produção / acabamento',entregador:'Entregador',gerente:'Gerente',outro:'Outro'};
 function Colaboradores(ctx){const {db,colaboradores=[],pedidos,pode,toast,owner,papel,equipe=[]}=ctx;const [aba,setAba]=useState('cadastro');const [ed,setEd]=useState(null);const [q,setQ]=useState('');const [ina,setIna]=useState(false);
@@ -1232,7 +1283,7 @@ function Colaboradores(ctx){const {db,colaboradores=[],pedidos,pode,toast,owner,
    ${lista.length===0?html`<${Empty} t="Nenhum colaborador" s="Cadastre vendedores, operadores e demais funcionários para usar nos pedidos e calcular comissões."/>`:html`<div className="scroll"><table className="stack"><thead><tr><th>Nome</th><th>Funções</th><th>WhatsApp</th><th className="r">Comissão venda</th><th className="r">Comissão operação</th><th>Acesso ao sistema</th><th></th></tr></thead><tbody>
     ${lista.map(c=>{const u=equipe.find(e=>e.id===c.usuarioId);return html`<tr key=${c.id} className="hov" onClick=${()=>pode2&&setEd(c)}><td><b>${c.nome}</b>${c.ativo===false?html` <${Badge}>inativo<//>`:''}</td><td className="sm">${(c.funcoes||[]).map(f=>FUNCOES[f]||f).join(', ')||'—'}</td><td className="nw">${fone(c.whatsapp)||'—'}</td>
      <td className="r tab">${pn(c.comissaoMetro)?moeda(c.comissaoMetro)+'/m':''}${pn(c.comissaoPct)?(pn(c.comissaoMetro)?' + ':'')+pct(c.comissaoPct):''}${!pn(c.comissaoMetro)&&!pn(c.comissaoPct)?'—':''}</td><td className="r tab">${pn(c.comissaoOperador)?moeda(c.comissaoOperador)+'/m':'—'}</td>
-     <td className="sm">${u?(u.email||u.nome||'vinculado'):html`<span className="mut">sem login</span>`}</td><td className="r">${pode2&&html`<button className="btn sm">Editar</button>`}</td></tr>`})}</tbody></table></div>`}</div>`}
+     <td className="sm">${u?html`${u.email||u.nome||'vinculado'}<div className="mut">${(()=>{const x=(ctx.papeis||[]).find(y=>y.id===u.id);return x&&x.papel?(PAPEIS[x.papel]?.nome||x.papel)+(Array.isArray(x.perms)?' · personalizado':''):'sem acesso liberado'})()}</div>`:html`<span className="mut">sem login</span>`}</td><td className="r">${pode2&&html`<button className="btn sm">Editar</button>`}</td></tr>`})}</tbody></table></div>`}</div>`}
   ${aba==='comissoes'&&html`<div className="card"><div className="row pad between" style=${{borderBottom:'1px solid var(--line)'}}><div className="row"><select className="in" style=${{width:190}} value=${per} onChange=${e=>setPer(e.target.value)}>${PERIODOS.map(([v,l])=>html`<option key=${v} value=${v}>${l}</option>`)}</select>
     ${per==='pers'&&html`<input type="date" className="in" style=${{width:160}} value=${ci[0]} onChange=${e=>setCi([e.target.value,ci[1]])}/><input type="date" className="in" style=${{width:160}} value=${ci[1]} onChange=${e=>setCi([ci[0],e.target.value])}/>`}</div>
     <div className="row"><b className="tab">Total: ${moeda(sum(com,c=>c.total))}</b><button className="btn sm" onClick=${exportar}><${Ic} n="dl" s=${14}/>Exportar</button></div></div>
@@ -1240,13 +1291,18 @@ function Colaboradores(ctx){const {db,colaboradores=[],pedidos,pode,toast,owner,
    ${com.length===0?html`<${Empty} t="Sem comissões no período" s="Escolha vendedor e operador nos pedidos para as comissões aparecerem aqui."/>`:html`<div className="scroll"><table><thead><tr><th>Colaborador</th><th className="r">Vendas</th><th className="r">Metros vendidos</th><th className="r">Faturamento</th><th className="r">Comissão venda</th><th className="r">Operados</th><th className="r">Metros operados</th><th className="r">Comissão operação</th><th className="r">Total</th></tr></thead><tbody>
     ${com.map(c=>html`<tr key=${c.id}><td><b>${c.nome}</b></td><td className="r tab">${c.qv}</td><td className="r tab">${num(c.mv)}</td><td className="r tab">${moeda(c.fv)}</td><td className="r tab">${moeda(c.cv)}</td><td className="r tab">${c.qo}</td><td className="r tab">${num(c.mo)}</td><td className="r tab">${moeda(c.co)}</td><td className="r tab b">${moeda(c.total)}</td></tr>`)}</tbody></table></div>`}</div>`}
   ${ed&&html`<${ColaboradorForm} ...${ctx} c=${ed.id?ed:null} onClose=${()=>setEd(null)}/>`}</div>`}
-function ColaboradorForm({db,c,colaboradores=[],equipe=[],toast,onClose}){
+function ColaboradorForm({db,c,colaboradores=[],equipe=[],papeis=[],owner,papel:meuPapel,me,toast,onClose}){const admin=owner||meuPapel==='admin';
  const [f,setF]=useState(()=>({nome:'',funcoes:[],whatsapp:'',doc:'',email:'',admissao:'',comissaoMetro:'',comissaoPct:'',comissaoOperador:'',usuarioId:'',obs:'',ativo:true,...(c||{}),
   comissaoMetro:String(c?.comissaoMetro??'').replace('.',','),comissaoPct:String(c?.comissaoPct??'').replace('.',','),comissaoOperador:String(c?.comissaoOperador??'').replace('.',',')}));const [s,setS]=useState(false);
+ const pp0=papeis.find(x=>x.id===(c?.usuarioId||''))||{};const [ac,setAc]=useState({papel:pp0.papel||'',perms:Array.isArray(pp0.perms)?pp0.perms:null});
+ useEffect(()=>{const x=papeis.find(y=>y.id===f.usuarioId)||{};setAc({papel:x.papel||'',perms:Array.isArray(x.perms)?x.perms:null})},[f.usuarioId]);
+ const permsAtuais=ac.perms||(PAPEIS[ac.papel]?.perms==='*'?PERMS.map(x=>x[0]):[...(PAPEIS[ac.papel]?.perms||[])]);
  const st=k=>e=>setF({...f,[k]:e.target.type==='checkbox'?e.target.checked:e.target.value});
  const dup=colaboradores.find(x=>x.id!==c?.id&&norm(x.nome).trim()===norm(f.nome).trim());
  const salvar=async()=>{if(!f.nome.trim())return toast('Informe o nome',1);if(dup)return toast('Já existe colaborador com esse nome',1);setS(true);
   try{const {id,...b}=f;await db.doc('colaboradores/'+(c?.id||'co'+uid())).set({...b,nome:f.nome.trim(),whatsapp:dig(f.whatsapp),doc:dig(f.doc),comissaoMetro:pn(f.comissaoMetro),comissaoPct:pn(f.comissaoPct),comissaoOperador:pn(f.comissaoOperador),criadoEm:c?.criadoEm||new Date().toISOString(),atualizadoEm:new Date().toISOString()});
+   if(admin&&f.usuarioId&&f.usuarioId!==me){const x=papeis.find(y=>y.id===f.usuarioId)||{};const mud=(x.papel||'')!==ac.papel||JSON.stringify(Array.isArray(x.perms)?x.perms:null)!==JSON.stringify(ac.perms);
+    if(mud){if(ac.papel)await db.doc('papeis/'+f.usuarioId).set({papel:ac.papel,...(ac.perms?{perms:ac.perms}:{}),em:new Date().toISOString(),por:me});else await db.doc('papeis/'+f.usuarioId).delete()}}
    toast(c?'Colaborador atualizado':'Colaborador cadastrado');onClose()}catch(e){toast('Erro: '+(e.message||e.code),1)}finally{setS(false)}};
  return html`<${Modal} lg title=${c?'Editar colaborador':'Novo colaborador'} onClose=${onClose}><div style=${{display:'grid',gap:14}}>
   <div className="grid g3"><${F} l="Nome *" hint=${dup?'Já cadastrado':''}><input className="in" autoFocus value=${f.nome} onChange=${st('nome')}/><//><${F} l="WhatsApp"><input className="in" inputMode="tel" value=${f.whatsapp} onChange=${st('whatsapp')}/><//><${F} l="CPF"><input className="in" inputMode="numeric" value=${f.doc} onChange=${st('doc')}/><//>
@@ -1254,6 +1310,14 @@ function ColaboradorForm({db,c,colaboradores=[],equipe=[],toast,onClose}){
    <${F} l="Login no sistema" hint="Vincula a uma pessoa da Equipe e permissões"><select className="in" value=${f.usuarioId} onChange=${st('usuarioId')}><option value="">Sem login</option>${equipe.map(e=>html`<option key=${e.id} value=${e.id}>${e.email||e.nome||e.id.slice(0,8)}</option>`)}</select><//></div>
   <div><span className="lb">Funções</span><div className="row" style=${{flexWrap:'wrap'}}>${Object.entries(FUNCOES).map(([k,l])=>html`<label key=${k} className="row sm card" style=${{padding:'6px 10px'}}><input type="checkbox" checked=${(f.funcoes||[]).includes(k)} onChange=${e=>setF({...f,funcoes:e.target.checked?[...(f.funcoes||[]),k]:(f.funcoes||[]).filter(x=>x!==k)})}/> ${l}</label>`)}</div></div>
   <div className="card pad"><b>Comissões</b><div className="grid g3" style=${{marginTop:8}}><${F} l="Venda: R$ por metro"><input className="in tab" inputMode="decimal" value=${f.comissaoMetro} onChange=${st('comissaoMetro')} placeholder="0,00"/><//><${F} l="Venda: % do faturamento"><input className="in tab" inputMode="decimal" value=${f.comissaoPct} onChange=${st('comissaoPct')} placeholder="0"/><//><${F} l="Operação: R$ por metro impresso"><input className="in tab" inputMode="decimal" value=${f.comissaoOperador} onChange=${st('comissaoOperador')} placeholder="0,00"/><//></div></div>
+  <div className="card pad" style=${{display:'grid',gap:10}}><b>Acesso ao sistema e permissões</b>
+   ${!f.usuarioId?html`<div className="sm mut">Para dar acesso: peça para a pessoa abrir o sistema e criar a conta dela (ela aparece em Usuários e permissões). Depois escolha o login dela no campo “Login no sistema” acima e defina aqui o que ela pode fazer.</div>`
+   :f.usuarioId===me?html`<div className="sm mut">Este login é o seu (acesso total).</div>`
+   :!admin?html`<div className="sm mut">Só o dono ou um administrador pode alterar permissões.</div>`
+   :html`<${F} l="Papel (modelo de permissões)"><select className="in" style=${{maxWidth:280}} value=${ac.papel} onChange=${e=>setAc({papel:e.target.value,perms:null})}><option value="">— Sem acesso —</option>${Object.entries(PAPEIS).map(([k,v])=>html`<option key=${k} value=${k}>${v.nome}</option>`)}</select><//>
+    ${ac.papel&&ac.papel!=='admin'&&html`<div><div className="row between"><span className="sm mut">${ac.perms?'Permissões personalizadas':'Usando o padrão do papel — marque/desmarque para personalizar'}</span>${ac.perms&&html`<button className="btn sm" onClick=${()=>setAc({...ac,perms:null})}>Voltar ao padrão</button>`}</div>
+     <div className="grid g2" style=${{marginTop:6}}>${PERMS.map(([k,l])=>html`<label key=${k} className="row sm"><input type="checkbox" checked=${permsAtuais.includes(k)} onChange=${e=>setAc({...ac,perms:e.target.checked?[...permsAtuais,k]:permsAtuais.filter(x=>x!==k)})}/> ${l}</label>`)}</div></div>`}
+    ${ac.papel==='admin'&&html`<div className="sm mut">Administrador tem acesso total.</div>`}`}</div>
   <${F} l="Observações"><textarea className="in" value=${f.obs} onChange=${st('obs')}></textarea><//>
   <div className="row between"><label className="row sm"><input type="checkbox" checked=${f.ativo} onChange=${st('ativo')}/> Ativo</label><button className="btn p" disabled=${s} onClick=${salvar}>${s?'Salvando…':c?'Salvar':'Cadastrar colaborador'}</button></div></div><//>`}
 
@@ -1439,6 +1503,9 @@ function Config(ctx){const {db,cfg,owner,papel,toast}=ctx;
      ${(ctx.maquinas||[]).filter(m=>(m.tipo||'textil')===k).flatMap(m=>(m.perfis||[]).map(pf=>html`<option key=${m.id+pf.id} value=${m.id+'|'+pf.id}>${m.nome} · ${pf.nome}</option>`))}</select><//>`)}</div></div>
    <div className="card pad" style=${{marginTop:12,display:'grid',gap:10}}><b>Frete (Melhor Envio)</b><div className="sm mut">Usado no botão “Cotar frete” dos pedidos com entrega. O peso do pacote é calculado: peso base + metros × peso por metro + peças × peso por peça (dá para ajustar na hora da cotação).</div>
     <div className="grid g4">${[['cepOrigem','CEP de origem'],['pesoBase','Peso base da embalagem (kg)'],['pesoMetro','Peso por metro de DTF (kg)'],['pesoPeca','Peso por peça de roupa (kg)'],['altura','Altura padrão (cm)'],['largura','Largura padrão (cm)'],['comprimento','Comprimento padrão (cm)']].map(([k,l])=>html`<${F} key=${k} l=${l}><input className="in tab" value=${(c.frete||FRETE_PADRAO)[k]??''} onChange=${e=>setC({...c,frete:{...FRETE_PADRAO,...(c.frete||{}),[k]:e.target.value}})}/><//>`)}
+     <div className="span" style=${{gridColumn:'1/-1'}}><b className="sm">Remetente das etiquetas</b></div>
+     ${[['nome','Nome / razão social'],['documento','CNPJ ou CPF'],['ie','Inscrição estadual (ou ISENTO)'],['telefone','Telefone'],['email','E-mail'],['cep','CEP'],['endereco','Endereço'],['numero','Número'],['complemento','Complemento'],['bairro','Bairro'],['cidade','Cidade'],['uf','UF']].map(([k,l])=>html`<${F} key=${'r'+k} l=${l}><input className="in" value=${((c.frete||{}).remetente||{})[k]??''} onChange=${e=>{const r={...((c.frete||{}).remetente||{}),[k]:e.target.value};setC({...c,frete:{...FRETE_PADRAO,...(c.frete||{}),remetente:r}});
+       if(k==='cep'&&dig(e.target.value).length===8)buscaCep(dig(e.target.value)).then(x=>{if(x)setC(cc=>({...cc,frete:{...FRETE_PADRAO,...(cc.frete||{}),remetente:{...((cc.frete||{}).remetente||{}),endereco:x.logradouro,bairro:x.bairro,cidade:x.localidade,uf:x.uf}}}))}).catch(()=>{})}}/><//>`)}
      <label className="row sm" style=${{alignSelf:'end',minHeight:40}}><input type="checkbox" checked=${!!(c.frete||{}).seguro} onChange=${e=>setC({...c,frete:{...FRETE_PADRAO,...(c.frete||{}),seguro:e.target.checked}})}/> Declarar valor por padrão</label></div></div>`}
   ${aba==='etapas'&&html`<div className="card"><div className="pad sm mut">“Exige pagamento” só aceita pedidos pagos. “Exige liberação” aceita pagos ou com produção faturada autorizada. “Status” atualiza a produção ao entrar na etapa.</div><div className="scroll"><table><thead><tr><th></th><th>Nome</th><th>Cor</th><th>Exige pagamento</th><th>Exige liberação</th><th>Status de produção</th></tr></thead><tbody>
    ${c.etapas.map((e,i)=>html`<tr key=${e.id}><td className="nw"><button className="btn sm" onClick=${()=>mov(i,-1)}>↑</button> <button className="btn sm" onClick=${()=>mov(i,1)}>↓</button></td><td><input className="in" value=${e.nome} onChange=${x=>upE(i,'nome',x.target.value)}/></td>
