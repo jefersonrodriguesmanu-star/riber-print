@@ -197,6 +197,2306 @@ window.claude={use:async n=>{if(n==='db'){await logado();return db}if(n==='user'
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/htm@3.1.1/dist/htm.umd.js"></script>
+<script>/* qrcode-generator 1.4.4 (MIT, Kazuhiko Arase) */
+//---------------------------------------------------------------------
+//
+// QR Code Generator for JavaScript
+//
+// Copyright (c) 2009 Kazuhiko Arase
+//
+// URL: http://www.d-project.com/
+//
+// Licensed under the MIT license:
+//  http://www.opensource.org/licenses/mit-license.php
+//
+// The word 'QR Code' is registered trademark of
+// DENSO WAVE INCORPORATED
+//  http://www.denso-wave.com/qrcode/faqpatent-e.html
+//
+//---------------------------------------------------------------------
+
+var qrcode = function() {
+
+  //---------------------------------------------------------------------
+  // qrcode
+  //---------------------------------------------------------------------
+
+  /**
+   * qrcode
+   * @param typeNumber 1 to 40
+   * @param errorCorrectionLevel 'L','M','Q','H'
+   */
+  var qrcode = function(typeNumber, errorCorrectionLevel) {
+
+    var PAD0 = 0xEC;
+    var PAD1 = 0x11;
+
+    var _typeNumber = typeNumber;
+    var _errorCorrectionLevel = QRErrorCorrectionLevel[errorCorrectionLevel];
+    var _modules = null;
+    var _moduleCount = 0;
+    var _dataCache = null;
+    var _dataList = [];
+
+    var _this = {};
+
+    var makeImpl = function(test, maskPattern) {
+
+      _moduleCount = _typeNumber * 4 + 17;
+      _modules = function(moduleCount) {
+        var modules = new Array(moduleCount);
+        for (var row = 0; row < moduleCount; row += 1) {
+          modules[row] = new Array(moduleCount);
+          for (var col = 0; col < moduleCount; col += 1) {
+            modules[row][col] = null;
+          }
+        }
+        return modules;
+      }(_moduleCount);
+
+      setupPositionProbePattern(0, 0);
+      setupPositionProbePattern(_moduleCount - 7, 0);
+      setupPositionProbePattern(0, _moduleCount - 7);
+      setupPositionAdjustPattern();
+      setupTimingPattern();
+      setupTypeInfo(test, maskPattern);
+
+      if (_typeNumber >= 7) {
+        setupTypeNumber(test);
+      }
+
+      if (_dataCache == null) {
+        _dataCache = createData(_typeNumber, _errorCorrectionLevel, _dataList);
+      }
+
+      mapData(_dataCache, maskPattern);
+    };
+
+    var setupPositionProbePattern = function(row, col) {
+
+      for (var r = -1; r <= 7; r += 1) {
+
+        if (row + r <= -1 || _moduleCount <= row + r) continue;
+
+        for (var c = -1; c <= 7; c += 1) {
+
+          if (col + c <= -1 || _moduleCount <= col + c) continue;
+
+          if ( (0 <= r && r <= 6 && (c == 0 || c == 6) )
+              || (0 <= c && c <= 6 && (r == 0 || r == 6) )
+              || (2 <= r && r <= 4 && 2 <= c && c <= 4) ) {
+            _modules[row + r][col + c] = true;
+          } else {
+            _modules[row + r][col + c] = false;
+          }
+        }
+      }
+    };
+
+    var getBestMaskPattern = function() {
+
+      var minLostPoint = 0;
+      var pattern = 0;
+
+      for (var i = 0; i < 8; i += 1) {
+
+        makeImpl(true, i);
+
+        var lostPoint = QRUtil.getLostPoint(_this);
+
+        if (i == 0 || minLostPoint > lostPoint) {
+          minLostPoint = lostPoint;
+          pattern = i;
+        }
+      }
+
+      return pattern;
+    };
+
+    var setupTimingPattern = function() {
+
+      for (var r = 8; r < _moduleCount - 8; r += 1) {
+        if (_modules[r][6] != null) {
+          continue;
+        }
+        _modules[r][6] = (r % 2 == 0);
+      }
+
+      for (var c = 8; c < _moduleCount - 8; c += 1) {
+        if (_modules[6][c] != null) {
+          continue;
+        }
+        _modules[6][c] = (c % 2 == 0);
+      }
+    };
+
+    var setupPositionAdjustPattern = function() {
+
+      var pos = QRUtil.getPatternPosition(_typeNumber);
+
+      for (var i = 0; i < pos.length; i += 1) {
+
+        for (var j = 0; j < pos.length; j += 1) {
+
+          var row = pos[i];
+          var col = pos[j];
+
+          if (_modules[row][col] != null) {
+            continue;
+          }
+
+          for (var r = -2; r <= 2; r += 1) {
+
+            for (var c = -2; c <= 2; c += 1) {
+
+              if (r == -2 || r == 2 || c == -2 || c == 2
+                  || (r == 0 && c == 0) ) {
+                _modules[row + r][col + c] = true;
+              } else {
+                _modules[row + r][col + c] = false;
+              }
+            }
+          }
+        }
+      }
+    };
+
+    var setupTypeNumber = function(test) {
+
+      var bits = QRUtil.getBCHTypeNumber(_typeNumber);
+
+      for (var i = 0; i < 18; i += 1) {
+        var mod = (!test && ( (bits >> i) & 1) == 1);
+        _modules[Math.floor(i / 3)][i % 3 + _moduleCount - 8 - 3] = mod;
+      }
+
+      for (var i = 0; i < 18; i += 1) {
+        var mod = (!test && ( (bits >> i) & 1) == 1);
+        _modules[i % 3 + _moduleCount - 8 - 3][Math.floor(i / 3)] = mod;
+      }
+    };
+
+    var setupTypeInfo = function(test, maskPattern) {
+
+      var data = (_errorCorrectionLevel << 3) | maskPattern;
+      var bits = QRUtil.getBCHTypeInfo(data);
+
+      // vertical
+      for (var i = 0; i < 15; i += 1) {
+
+        var mod = (!test && ( (bits >> i) & 1) == 1);
+
+        if (i < 6) {
+          _modules[i][8] = mod;
+        } else if (i < 8) {
+          _modules[i + 1][8] = mod;
+        } else {
+          _modules[_moduleCount - 15 + i][8] = mod;
+        }
+      }
+
+      // horizontal
+      for (var i = 0; i < 15; i += 1) {
+
+        var mod = (!test && ( (bits >> i) & 1) == 1);
+
+        if (i < 8) {
+          _modules[8][_moduleCount - i - 1] = mod;
+        } else if (i < 9) {
+          _modules[8][15 - i - 1 + 1] = mod;
+        } else {
+          _modules[8][15 - i - 1] = mod;
+        }
+      }
+
+      // fixed module
+      _modules[_moduleCount - 8][8] = (!test);
+    };
+
+    var mapData = function(data, maskPattern) {
+
+      var inc = -1;
+      var row = _moduleCount - 1;
+      var bitIndex = 7;
+      var byteIndex = 0;
+      var maskFunc = QRUtil.getMaskFunction(maskPattern);
+
+      for (var col = _moduleCount - 1; col > 0; col -= 2) {
+
+        if (col == 6) col -= 1;
+
+        while (true) {
+
+          for (var c = 0; c < 2; c += 1) {
+
+            if (_modules[row][col - c] == null) {
+
+              var dark = false;
+
+              if (byteIndex < data.length) {
+                dark = ( ( (data[byteIndex] >>> bitIndex) & 1) == 1);
+              }
+
+              var mask = maskFunc(row, col - c);
+
+              if (mask) {
+                dark = !dark;
+              }
+
+              _modules[row][col - c] = dark;
+              bitIndex -= 1;
+
+              if (bitIndex == -1) {
+                byteIndex += 1;
+                bitIndex = 7;
+              }
+            }
+          }
+
+          row += inc;
+
+          if (row < 0 || _moduleCount <= row) {
+            row -= inc;
+            inc = -inc;
+            break;
+          }
+        }
+      }
+    };
+
+    var createBytes = function(buffer, rsBlocks) {
+
+      var offset = 0;
+
+      var maxDcCount = 0;
+      var maxEcCount = 0;
+
+      var dcdata = new Array(rsBlocks.length);
+      var ecdata = new Array(rsBlocks.length);
+
+      for (var r = 0; r < rsBlocks.length; r += 1) {
+
+        var dcCount = rsBlocks[r].dataCount;
+        var ecCount = rsBlocks[r].totalCount - dcCount;
+
+        maxDcCount = Math.max(maxDcCount, dcCount);
+        maxEcCount = Math.max(maxEcCount, ecCount);
+
+        dcdata[r] = new Array(dcCount);
+
+        for (var i = 0; i < dcdata[r].length; i += 1) {
+          dcdata[r][i] = 0xff & buffer.getBuffer()[i + offset];
+        }
+        offset += dcCount;
+
+        var rsPoly = QRUtil.getErrorCorrectPolynomial(ecCount);
+        var rawPoly = qrPolynomial(dcdata[r], rsPoly.getLength() - 1);
+
+        var modPoly = rawPoly.mod(rsPoly);
+        ecdata[r] = new Array(rsPoly.getLength() - 1);
+        for (var i = 0; i < ecdata[r].length; i += 1) {
+          var modIndex = i + modPoly.getLength() - ecdata[r].length;
+          ecdata[r][i] = (modIndex >= 0)? modPoly.getAt(modIndex) : 0;
+        }
+      }
+
+      var totalCodeCount = 0;
+      for (var i = 0; i < rsBlocks.length; i += 1) {
+        totalCodeCount += rsBlocks[i].totalCount;
+      }
+
+      var data = new Array(totalCodeCount);
+      var index = 0;
+
+      for (var i = 0; i < maxDcCount; i += 1) {
+        for (var r = 0; r < rsBlocks.length; r += 1) {
+          if (i < dcdata[r].length) {
+            data[index] = dcdata[r][i];
+            index += 1;
+          }
+        }
+      }
+
+      for (var i = 0; i < maxEcCount; i += 1) {
+        for (var r = 0; r < rsBlocks.length; r += 1) {
+          if (i < ecdata[r].length) {
+            data[index] = ecdata[r][i];
+            index += 1;
+          }
+        }
+      }
+
+      return data;
+    };
+
+    var createData = function(typeNumber, errorCorrectionLevel, dataList) {
+
+      var rsBlocks = QRRSBlock.getRSBlocks(typeNumber, errorCorrectionLevel);
+
+      var buffer = qrBitBuffer();
+
+      for (var i = 0; i < dataList.length; i += 1) {
+        var data = dataList[i];
+        buffer.put(data.getMode(), 4);
+        buffer.put(data.getLength(), QRUtil.getLengthInBits(data.getMode(), typeNumber) );
+        data.write(buffer);
+      }
+
+      // calc num max data.
+      var totalDataCount = 0;
+      for (var i = 0; i < rsBlocks.length; i += 1) {
+        totalDataCount += rsBlocks[i].dataCount;
+      }
+
+      if (buffer.getLengthInBits() > totalDataCount * 8) {
+        throw 'code length overflow. ('
+          + buffer.getLengthInBits()
+          + '>'
+          + totalDataCount * 8
+          + ')';
+      }
+
+      // end code
+      if (buffer.getLengthInBits() + 4 <= totalDataCount * 8) {
+        buffer.put(0, 4);
+      }
+
+      // padding
+      while (buffer.getLengthInBits() % 8 != 0) {
+        buffer.putBit(false);
+      }
+
+      // padding
+      while (true) {
+
+        if (buffer.getLengthInBits() >= totalDataCount * 8) {
+          break;
+        }
+        buffer.put(PAD0, 8);
+
+        if (buffer.getLengthInBits() >= totalDataCount * 8) {
+          break;
+        }
+        buffer.put(PAD1, 8);
+      }
+
+      return createBytes(buffer, rsBlocks);
+    };
+
+    _this.addData = function(data, mode) {
+
+      mode = mode || 'Byte';
+
+      var newData = null;
+
+      switch(mode) {
+      case 'Numeric' :
+        newData = qrNumber(data);
+        break;
+      case 'Alphanumeric' :
+        newData = qrAlphaNum(data);
+        break;
+      case 'Byte' :
+        newData = qr8BitByte(data);
+        break;
+      case 'Kanji' :
+        newData = qrKanji(data);
+        break;
+      default :
+        throw 'mode:' + mode;
+      }
+
+      _dataList.push(newData);
+      _dataCache = null;
+    };
+
+    _this.isDark = function(row, col) {
+      if (row < 0 || _moduleCount <= row || col < 0 || _moduleCount <= col) {
+        throw row + ',' + col;
+      }
+      return _modules[row][col];
+    };
+
+    _this.getModuleCount = function() {
+      return _moduleCount;
+    };
+
+    _this.make = function() {
+      if (_typeNumber < 1) {
+        var typeNumber = 1;
+
+        for (; typeNumber < 40; typeNumber++) {
+          var rsBlocks = QRRSBlock.getRSBlocks(typeNumber, _errorCorrectionLevel);
+          var buffer = qrBitBuffer();
+
+          for (var i = 0; i < _dataList.length; i++) {
+            var data = _dataList[i];
+            buffer.put(data.getMode(), 4);
+            buffer.put(data.getLength(), QRUtil.getLengthInBits(data.getMode(), typeNumber) );
+            data.write(buffer);
+          }
+
+          var totalDataCount = 0;
+          for (var i = 0; i < rsBlocks.length; i++) {
+            totalDataCount += rsBlocks[i].dataCount;
+          }
+
+          if (buffer.getLengthInBits() <= totalDataCount * 8) {
+            break;
+          }
+        }
+
+        _typeNumber = typeNumber;
+      }
+
+      makeImpl(false, getBestMaskPattern() );
+    };
+
+    _this.createTableTag = function(cellSize, margin) {
+
+      cellSize = cellSize || 2;
+      margin = (typeof margin == 'undefined')? cellSize * 4 : margin;
+
+      var qrHtml = '';
+
+      qrHtml += '<table style="';
+      qrHtml += ' border-width: 0px; border-style: none;';
+      qrHtml += ' border-collapse: collapse;';
+      qrHtml += ' padding: 0px; margin: ' + margin + 'px;';
+      qrHtml += '">';
+      qrHtml += '<tbody>';
+
+      for (var r = 0; r < _this.getModuleCount(); r += 1) {
+
+        qrHtml += '<tr>';
+
+        for (var c = 0; c < _this.getModuleCount(); c += 1) {
+          qrHtml += '<td style="';
+          qrHtml += ' border-width: 0px; border-style: none;';
+          qrHtml += ' border-collapse: collapse;';
+          qrHtml += ' padding: 0px; margin: 0px;';
+          qrHtml += ' width: ' + cellSize + 'px;';
+          qrHtml += ' height: ' + cellSize + 'px;';
+          qrHtml += ' background-color: ';
+          qrHtml += _this.isDark(r, c)? '#000000' : '#ffffff';
+          qrHtml += ';';
+          qrHtml += '"/>';
+        }
+
+        qrHtml += '</tr>';
+      }
+
+      qrHtml += '</tbody>';
+      qrHtml += '</table>';
+
+      return qrHtml;
+    };
+
+    _this.createSvgTag = function(cellSize, margin, alt, title) {
+
+      var opts = {};
+      if (typeof arguments[0] == 'object') {
+        // Called by options.
+        opts = arguments[0];
+        // overwrite cellSize and margin.
+        cellSize = opts.cellSize;
+        margin = opts.margin;
+        alt = opts.alt;
+        title = opts.title;
+      }
+
+      cellSize = cellSize || 2;
+      margin = (typeof margin == 'undefined')? cellSize * 4 : margin;
+
+      // Compose alt property surrogate
+      alt = (typeof alt === 'string') ? {text: alt} : alt || {};
+      alt.text = alt.text || null;
+      alt.id = (alt.text) ? alt.id || 'qrcode-description' : null;
+
+      // Compose title property surrogate
+      title = (typeof title === 'string') ? {text: title} : title || {};
+      title.text = title.text || null;
+      title.id = (title.text) ? title.id || 'qrcode-title' : null;
+
+      var size = _this.getModuleCount() * cellSize + margin * 2;
+      var c, mc, r, mr, qrSvg='', rect;
+
+      rect = 'l' + cellSize + ',0 0,' + cellSize +
+        ' -' + cellSize + ',0 0,-' + cellSize + 'z ';
+
+      qrSvg += '<svg version="1.1" xmlns="http://www.w3.org/2000/svg"';
+      qrSvg += !opts.scalable ? ' width="' + size + 'px" height="' + size + 'px"' : '';
+      qrSvg += ' viewBox="0 0 ' + size + ' ' + size + '" ';
+      qrSvg += ' preserveAspectRatio="xMinYMin meet"';
+      qrSvg += (title.text || alt.text) ? ' role="img" aria-labelledby="' +
+          escapeXml([title.id, alt.id].join(' ').trim() ) + '"' : '';
+      qrSvg += '>';
+      qrSvg += (title.text) ? '<title id="' + escapeXml(title.id) + '">' +
+          escapeXml(title.text) + '</title>' : '';
+      qrSvg += (alt.text) ? '<description id="' + escapeXml(alt.id) + '">' +
+          escapeXml(alt.text) + '</description>' : '';
+      qrSvg += '<rect width="100%" height="100%" fill="white" cx="0" cy="0"/>';
+      qrSvg += '<path d="';
+
+      for (r = 0; r < _this.getModuleCount(); r += 1) {
+        mr = r * cellSize + margin;
+        for (c = 0; c < _this.getModuleCount(); c += 1) {
+          if (_this.isDark(r, c) ) {
+            mc = c*cellSize+margin;
+            qrSvg += 'M' + mc + ',' + mr + rect;
+          }
+        }
+      }
+
+      qrSvg += '" stroke="transparent" fill="black"/>';
+      qrSvg += '</svg>';
+
+      return qrSvg;
+    };
+
+    _this.createDataURL = function(cellSize, margin) {
+
+      cellSize = cellSize || 2;
+      margin = (typeof margin == 'undefined')? cellSize * 4 : margin;
+
+      var size = _this.getModuleCount() * cellSize + margin * 2;
+      var min = margin;
+      var max = size - margin;
+
+      return createDataURL(size, size, function(x, y) {
+        if (min <= x && x < max && min <= y && y < max) {
+          var c = Math.floor( (x - min) / cellSize);
+          var r = Math.floor( (y - min) / cellSize);
+          return _this.isDark(r, c)? 0 : 1;
+        } else {
+          return 1;
+        }
+      } );
+    };
+
+    _this.createImgTag = function(cellSize, margin, alt) {
+
+      cellSize = cellSize || 2;
+      margin = (typeof margin == 'undefined')? cellSize * 4 : margin;
+
+      var size = _this.getModuleCount() * cellSize + margin * 2;
+
+      var img = '';
+      img += '<img';
+      img += '\u0020src="';
+      img += _this.createDataURL(cellSize, margin);
+      img += '"';
+      img += '\u0020width="';
+      img += size;
+      img += '"';
+      img += '\u0020height="';
+      img += size;
+      img += '"';
+      if (alt) {
+        img += '\u0020alt="';
+        img += escapeXml(alt);
+        img += '"';
+      }
+      img += '/>';
+
+      return img;
+    };
+
+    var escapeXml = function(s) {
+      var escaped = '';
+      for (var i = 0; i < s.length; i += 1) {
+        var c = s.charAt(i);
+        switch(c) {
+        case '<': escaped += '&lt;'; break;
+        case '>': escaped += '&gt;'; break;
+        case '&': escaped += '&amp;'; break;
+        case '"': escaped += '&quot;'; break;
+        default : escaped += c; break;
+        }
+      }
+      return escaped;
+    };
+
+    var _createHalfASCII = function(margin) {
+      var cellSize = 1;
+      margin = (typeof margin == 'undefined')? cellSize * 2 : margin;
+
+      var size = _this.getModuleCount() * cellSize + margin * 2;
+      var min = margin;
+      var max = size - margin;
+
+      var y, x, r1, r2, p;
+
+      var blocks = {
+        '██': '█',
+        '█ ': '▀',
+        ' █': '▄',
+        '  ': ' '
+      };
+
+      var blocksLastLineNoMargin = {
+        '██': '▀',
+        '█ ': '▀',
+        ' █': ' ',
+        '  ': ' '
+      };
+
+      var ascii = '';
+      for (y = 0; y < size; y += 2) {
+        r1 = Math.floor((y - min) / cellSize);
+        r2 = Math.floor((y + 1 - min) / cellSize);
+        for (x = 0; x < size; x += 1) {
+          p = '█';
+
+          if (min <= x && x < max && min <= y && y < max && _this.isDark(r1, Math.floor((x - min) / cellSize))) {
+            p = ' ';
+          }
+
+          if (min <= x && x < max && min <= y+1 && y+1 < max && _this.isDark(r2, Math.floor((x - min) / cellSize))) {
+            p += ' ';
+          }
+          else {
+            p += '█';
+          }
+
+          // Output 2 characters per pixel, to create full square. 1 character per pixels gives only half width of square.
+          ascii += (margin < 1 && y+1 >= max) ? blocksLastLineNoMargin[p] : blocks[p];
+        }
+
+        ascii += '\n';
+      }
+
+      if (size % 2 && margin > 0) {
+        return ascii.substring(0, ascii.length - size - 1) + Array(size+1).join('▀');
+      }
+
+      return ascii.substring(0, ascii.length-1);
+    };
+
+    _this.createASCII = function(cellSize, margin) {
+      cellSize = cellSize || 1;
+
+      if (cellSize < 2) {
+        return _createHalfASCII(margin);
+      }
+
+      cellSize -= 1;
+      margin = (typeof margin == 'undefined')? cellSize * 2 : margin;
+
+      var size = _this.getModuleCount() * cellSize + margin * 2;
+      var min = margin;
+      var max = size - margin;
+
+      var y, x, r, p;
+
+      var white = Array(cellSize+1).join('██');
+      var black = Array(cellSize+1).join('  ');
+
+      var ascii = '';
+      var line = '';
+      for (y = 0; y < size; y += 1) {
+        r = Math.floor( (y - min) / cellSize);
+        line = '';
+        for (x = 0; x < size; x += 1) {
+          p = 1;
+
+          if (min <= x && x < max && min <= y && y < max && _this.isDark(r, Math.floor((x - min) / cellSize))) {
+            p = 0;
+          }
+
+          // Output 2 characters per pixel, to create full square. 1 character per pixels gives only half width of square.
+          line += p ? white : black;
+        }
+
+        for (r = 0; r < cellSize; r += 1) {
+          ascii += line + '\n';
+        }
+      }
+
+      return ascii.substring(0, ascii.length-1);
+    };
+
+    _this.renderTo2dContext = function(context, cellSize) {
+      cellSize = cellSize || 2;
+      var length = _this.getModuleCount();
+      for (var row = 0; row < length; row++) {
+        for (var col = 0; col < length; col++) {
+          context.fillStyle = _this.isDark(row, col) ? 'black' : 'white';
+          context.fillRect(row * cellSize, col * cellSize, cellSize, cellSize);
+        }
+      }
+    }
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // qrcode.stringToBytes
+  //---------------------------------------------------------------------
+
+  qrcode.stringToBytesFuncs = {
+    'default' : function(s) {
+      var bytes = [];
+      for (var i = 0; i < s.length; i += 1) {
+        var c = s.charCodeAt(i);
+        bytes.push(c & 0xff);
+      }
+      return bytes;
+    }
+  };
+
+  qrcode.stringToBytes = qrcode.stringToBytesFuncs['default'];
+
+  //---------------------------------------------------------------------
+  // qrcode.createStringToBytes
+  //---------------------------------------------------------------------
+
+  /**
+   * @param unicodeData base64 string of byte array.
+   * [16bit Unicode],[16bit Bytes], ...
+   * @param numChars
+   */
+  qrcode.createStringToBytes = function(unicodeData, numChars) {
+
+    // create conversion map.
+
+    var unicodeMap = function() {
+
+      var bin = base64DecodeInputStream(unicodeData);
+      var read = function() {
+        var b = bin.read();
+        if (b == -1) throw 'eof';
+        return b;
+      };
+
+      var count = 0;
+      var unicodeMap = {};
+      while (true) {
+        var b0 = bin.read();
+        if (b0 == -1) break;
+        var b1 = read();
+        var b2 = read();
+        var b3 = read();
+        var k = String.fromCharCode( (b0 << 8) | b1);
+        var v = (b2 << 8) | b3;
+        unicodeMap[k] = v;
+        count += 1;
+      }
+      if (count != numChars) {
+        throw count + ' != ' + numChars;
+      }
+
+      return unicodeMap;
+    }();
+
+    var unknownChar = '?'.charCodeAt(0);
+
+    return function(s) {
+      var bytes = [];
+      for (var i = 0; i < s.length; i += 1) {
+        var c = s.charCodeAt(i);
+        if (c < 128) {
+          bytes.push(c);
+        } else {
+          var b = unicodeMap[s.charAt(i)];
+          if (typeof b == 'number') {
+            if ( (b & 0xff) == b) {
+              // 1byte
+              bytes.push(b);
+            } else {
+              // 2bytes
+              bytes.push(b >>> 8);
+              bytes.push(b & 0xff);
+            }
+          } else {
+            bytes.push(unknownChar);
+          }
+        }
+      }
+      return bytes;
+    };
+  };
+
+  //---------------------------------------------------------------------
+  // QRMode
+  //---------------------------------------------------------------------
+
+  var QRMode = {
+    MODE_NUMBER :    1 << 0,
+    MODE_ALPHA_NUM : 1 << 1,
+    MODE_8BIT_BYTE : 1 << 2,
+    MODE_KANJI :     1 << 3
+  };
+
+  //---------------------------------------------------------------------
+  // QRErrorCorrectionLevel
+  //---------------------------------------------------------------------
+
+  var QRErrorCorrectionLevel = {
+    L : 1,
+    M : 0,
+    Q : 3,
+    H : 2
+  };
+
+  //---------------------------------------------------------------------
+  // QRMaskPattern
+  //---------------------------------------------------------------------
+
+  var QRMaskPattern = {
+    PATTERN000 : 0,
+    PATTERN001 : 1,
+    PATTERN010 : 2,
+    PATTERN011 : 3,
+    PATTERN100 : 4,
+    PATTERN101 : 5,
+    PATTERN110 : 6,
+    PATTERN111 : 7
+  };
+
+  //---------------------------------------------------------------------
+  // QRUtil
+  //---------------------------------------------------------------------
+
+  var QRUtil = function() {
+
+    var PATTERN_POSITION_TABLE = [
+      [],
+      [6, 18],
+      [6, 22],
+      [6, 26],
+      [6, 30],
+      [6, 34],
+      [6, 22, 38],
+      [6, 24, 42],
+      [6, 26, 46],
+      [6, 28, 50],
+      [6, 30, 54],
+      [6, 32, 58],
+      [6, 34, 62],
+      [6, 26, 46, 66],
+      [6, 26, 48, 70],
+      [6, 26, 50, 74],
+      [6, 30, 54, 78],
+      [6, 30, 56, 82],
+      [6, 30, 58, 86],
+      [6, 34, 62, 90],
+      [6, 28, 50, 72, 94],
+      [6, 26, 50, 74, 98],
+      [6, 30, 54, 78, 102],
+      [6, 28, 54, 80, 106],
+      [6, 32, 58, 84, 110],
+      [6, 30, 58, 86, 114],
+      [6, 34, 62, 90, 118],
+      [6, 26, 50, 74, 98, 122],
+      [6, 30, 54, 78, 102, 126],
+      [6, 26, 52, 78, 104, 130],
+      [6, 30, 56, 82, 108, 134],
+      [6, 34, 60, 86, 112, 138],
+      [6, 30, 58, 86, 114, 142],
+      [6, 34, 62, 90, 118, 146],
+      [6, 30, 54, 78, 102, 126, 150],
+      [6, 24, 50, 76, 102, 128, 154],
+      [6, 28, 54, 80, 106, 132, 158],
+      [6, 32, 58, 84, 110, 136, 162],
+      [6, 26, 54, 82, 110, 138, 166],
+      [6, 30, 58, 86, 114, 142, 170]
+    ];
+    var G15 = (1 << 10) | (1 << 8) | (1 << 5) | (1 << 4) | (1 << 2) | (1 << 1) | (1 << 0);
+    var G18 = (1 << 12) | (1 << 11) | (1 << 10) | (1 << 9) | (1 << 8) | (1 << 5) | (1 << 2) | (1 << 0);
+    var G15_MASK = (1 << 14) | (1 << 12) | (1 << 10) | (1 << 4) | (1 << 1);
+
+    var _this = {};
+
+    var getBCHDigit = function(data) {
+      var digit = 0;
+      while (data != 0) {
+        digit += 1;
+        data >>>= 1;
+      }
+      return digit;
+    };
+
+    _this.getBCHTypeInfo = function(data) {
+      var d = data << 10;
+      while (getBCHDigit(d) - getBCHDigit(G15) >= 0) {
+        d ^= (G15 << (getBCHDigit(d) - getBCHDigit(G15) ) );
+      }
+      return ( (data << 10) | d) ^ G15_MASK;
+    };
+
+    _this.getBCHTypeNumber = function(data) {
+      var d = data << 12;
+      while (getBCHDigit(d) - getBCHDigit(G18) >= 0) {
+        d ^= (G18 << (getBCHDigit(d) - getBCHDigit(G18) ) );
+      }
+      return (data << 12) | d;
+    };
+
+    _this.getPatternPosition = function(typeNumber) {
+      return PATTERN_POSITION_TABLE[typeNumber - 1];
+    };
+
+    _this.getMaskFunction = function(maskPattern) {
+
+      switch (maskPattern) {
+
+      case QRMaskPattern.PATTERN000 :
+        return function(i, j) { return (i + j) % 2 == 0; };
+      case QRMaskPattern.PATTERN001 :
+        return function(i, j) { return i % 2 == 0; };
+      case QRMaskPattern.PATTERN010 :
+        return function(i, j) { return j % 3 == 0; };
+      case QRMaskPattern.PATTERN011 :
+        return function(i, j) { return (i + j) % 3 == 0; };
+      case QRMaskPattern.PATTERN100 :
+        return function(i, j) { return (Math.floor(i / 2) + Math.floor(j / 3) ) % 2 == 0; };
+      case QRMaskPattern.PATTERN101 :
+        return function(i, j) { return (i * j) % 2 + (i * j) % 3 == 0; };
+      case QRMaskPattern.PATTERN110 :
+        return function(i, j) { return ( (i * j) % 2 + (i * j) % 3) % 2 == 0; };
+      case QRMaskPattern.PATTERN111 :
+        return function(i, j) { return ( (i * j) % 3 + (i + j) % 2) % 2 == 0; };
+
+      default :
+        throw 'bad maskPattern:' + maskPattern;
+      }
+    };
+
+    _this.getErrorCorrectPolynomial = function(errorCorrectLength) {
+      var a = qrPolynomial([1], 0);
+      for (var i = 0; i < errorCorrectLength; i += 1) {
+        a = a.multiply(qrPolynomial([1, QRMath.gexp(i)], 0) );
+      }
+      return a;
+    };
+
+    _this.getLengthInBits = function(mode, type) {
+
+      if (1 <= type && type < 10) {
+
+        // 1 - 9
+
+        switch(mode) {
+        case QRMode.MODE_NUMBER    : return 10;
+        case QRMode.MODE_ALPHA_NUM : return 9;
+        case QRMode.MODE_8BIT_BYTE : return 8;
+        case QRMode.MODE_KANJI     : return 8;
+        default :
+          throw 'mode:' + mode;
+        }
+
+      } else if (type < 27) {
+
+        // 10 - 26
+
+        switch(mode) {
+        case QRMode.MODE_NUMBER    : return 12;
+        case QRMode.MODE_ALPHA_NUM : return 11;
+        case QRMode.MODE_8BIT_BYTE : return 16;
+        case QRMode.MODE_KANJI     : return 10;
+        default :
+          throw 'mode:' + mode;
+        }
+
+      } else if (type < 41) {
+
+        // 27 - 40
+
+        switch(mode) {
+        case QRMode.MODE_NUMBER    : return 14;
+        case QRMode.MODE_ALPHA_NUM : return 13;
+        case QRMode.MODE_8BIT_BYTE : return 16;
+        case QRMode.MODE_KANJI     : return 12;
+        default :
+          throw 'mode:' + mode;
+        }
+
+      } else {
+        throw 'type:' + type;
+      }
+    };
+
+    _this.getLostPoint = function(qrcode) {
+
+      var moduleCount = qrcode.getModuleCount();
+
+      var lostPoint = 0;
+
+      // LEVEL1
+
+      for (var row = 0; row < moduleCount; row += 1) {
+        for (var col = 0; col < moduleCount; col += 1) {
+
+          var sameCount = 0;
+          var dark = qrcode.isDark(row, col);
+
+          for (var r = -1; r <= 1; r += 1) {
+
+            if (row + r < 0 || moduleCount <= row + r) {
+              continue;
+            }
+
+            for (var c = -1; c <= 1; c += 1) {
+
+              if (col + c < 0 || moduleCount <= col + c) {
+                continue;
+              }
+
+              if (r == 0 && c == 0) {
+                continue;
+              }
+
+              if (dark == qrcode.isDark(row + r, col + c) ) {
+                sameCount += 1;
+              }
+            }
+          }
+
+          if (sameCount > 5) {
+            lostPoint += (3 + sameCount - 5);
+          }
+        }
+      };
+
+      // LEVEL2
+
+      for (var row = 0; row < moduleCount - 1; row += 1) {
+        for (var col = 0; col < moduleCount - 1; col += 1) {
+          var count = 0;
+          if (qrcode.isDark(row, col) ) count += 1;
+          if (qrcode.isDark(row + 1, col) ) count += 1;
+          if (qrcode.isDark(row, col + 1) ) count += 1;
+          if (qrcode.isDark(row + 1, col + 1) ) count += 1;
+          if (count == 0 || count == 4) {
+            lostPoint += 3;
+          }
+        }
+      }
+
+      // LEVEL3
+
+      for (var row = 0; row < moduleCount; row += 1) {
+        for (var col = 0; col < moduleCount - 6; col += 1) {
+          if (qrcode.isDark(row, col)
+              && !qrcode.isDark(row, col + 1)
+              &&  qrcode.isDark(row, col + 2)
+              &&  qrcode.isDark(row, col + 3)
+              &&  qrcode.isDark(row, col + 4)
+              && !qrcode.isDark(row, col + 5)
+              &&  qrcode.isDark(row, col + 6) ) {
+            lostPoint += 40;
+          }
+        }
+      }
+
+      for (var col = 0; col < moduleCount; col += 1) {
+        for (var row = 0; row < moduleCount - 6; row += 1) {
+          if (qrcode.isDark(row, col)
+              && !qrcode.isDark(row + 1, col)
+              &&  qrcode.isDark(row + 2, col)
+              &&  qrcode.isDark(row + 3, col)
+              &&  qrcode.isDark(row + 4, col)
+              && !qrcode.isDark(row + 5, col)
+              &&  qrcode.isDark(row + 6, col) ) {
+            lostPoint += 40;
+          }
+        }
+      }
+
+      // LEVEL4
+
+      var darkCount = 0;
+
+      for (var col = 0; col < moduleCount; col += 1) {
+        for (var row = 0; row < moduleCount; row += 1) {
+          if (qrcode.isDark(row, col) ) {
+            darkCount += 1;
+          }
+        }
+      }
+
+      var ratio = Math.abs(100 * darkCount / moduleCount / moduleCount - 50) / 5;
+      lostPoint += ratio * 10;
+
+      return lostPoint;
+    };
+
+    return _this;
+  }();
+
+  //---------------------------------------------------------------------
+  // QRMath
+  //---------------------------------------------------------------------
+
+  var QRMath = function() {
+
+    var EXP_TABLE = new Array(256);
+    var LOG_TABLE = new Array(256);
+
+    // initialize tables
+    for (var i = 0; i < 8; i += 1) {
+      EXP_TABLE[i] = 1 << i;
+    }
+    for (var i = 8; i < 256; i += 1) {
+      EXP_TABLE[i] = EXP_TABLE[i - 4]
+        ^ EXP_TABLE[i - 5]
+        ^ EXP_TABLE[i - 6]
+        ^ EXP_TABLE[i - 8];
+    }
+    for (var i = 0; i < 255; i += 1) {
+      LOG_TABLE[EXP_TABLE[i] ] = i;
+    }
+
+    var _this = {};
+
+    _this.glog = function(n) {
+
+      if (n < 1) {
+        throw 'glog(' + n + ')';
+      }
+
+      return LOG_TABLE[n];
+    };
+
+    _this.gexp = function(n) {
+
+      while (n < 0) {
+        n += 255;
+      }
+
+      while (n >= 256) {
+        n -= 255;
+      }
+
+      return EXP_TABLE[n];
+    };
+
+    return _this;
+  }();
+
+  //---------------------------------------------------------------------
+  // qrPolynomial
+  //---------------------------------------------------------------------
+
+  function qrPolynomial(num, shift) {
+
+    if (typeof num.length == 'undefined') {
+      throw num.length + '/' + shift;
+    }
+
+    var _num = function() {
+      var offset = 0;
+      while (offset < num.length && num[offset] == 0) {
+        offset += 1;
+      }
+      var _num = new Array(num.length - offset + shift);
+      for (var i = 0; i < num.length - offset; i += 1) {
+        _num[i] = num[i + offset];
+      }
+      return _num;
+    }();
+
+    var _this = {};
+
+    _this.getAt = function(index) {
+      return _num[index];
+    };
+
+    _this.getLength = function() {
+      return _num.length;
+    };
+
+    _this.multiply = function(e) {
+
+      var num = new Array(_this.getLength() + e.getLength() - 1);
+
+      for (var i = 0; i < _this.getLength(); i += 1) {
+        for (var j = 0; j < e.getLength(); j += 1) {
+          num[i + j] ^= QRMath.gexp(QRMath.glog(_this.getAt(i) ) + QRMath.glog(e.getAt(j) ) );
+        }
+      }
+
+      return qrPolynomial(num, 0);
+    };
+
+    _this.mod = function(e) {
+
+      if (_this.getLength() - e.getLength() < 0) {
+        return _this;
+      }
+
+      var ratio = QRMath.glog(_this.getAt(0) ) - QRMath.glog(e.getAt(0) );
+
+      var num = new Array(_this.getLength() );
+      for (var i = 0; i < _this.getLength(); i += 1) {
+        num[i] = _this.getAt(i);
+      }
+
+      for (var i = 0; i < e.getLength(); i += 1) {
+        num[i] ^= QRMath.gexp(QRMath.glog(e.getAt(i) ) + ratio);
+      }
+
+      // recursive call
+      return qrPolynomial(num, 0).mod(e);
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // QRRSBlock
+  //---------------------------------------------------------------------
+
+  var QRRSBlock = function() {
+
+    var RS_BLOCK_TABLE = [
+
+      // L
+      // M
+      // Q
+      // H
+
+      // 1
+      [1, 26, 19],
+      [1, 26, 16],
+      [1, 26, 13],
+      [1, 26, 9],
+
+      // 2
+      [1, 44, 34],
+      [1, 44, 28],
+      [1, 44, 22],
+      [1, 44, 16],
+
+      // 3
+      [1, 70, 55],
+      [1, 70, 44],
+      [2, 35, 17],
+      [2, 35, 13],
+
+      // 4
+      [1, 100, 80],
+      [2, 50, 32],
+      [2, 50, 24],
+      [4, 25, 9],
+
+      // 5
+      [1, 134, 108],
+      [2, 67, 43],
+      [2, 33, 15, 2, 34, 16],
+      [2, 33, 11, 2, 34, 12],
+
+      // 6
+      [2, 86, 68],
+      [4, 43, 27],
+      [4, 43, 19],
+      [4, 43, 15],
+
+      // 7
+      [2, 98, 78],
+      [4, 49, 31],
+      [2, 32, 14, 4, 33, 15],
+      [4, 39, 13, 1, 40, 14],
+
+      // 8
+      [2, 121, 97],
+      [2, 60, 38, 2, 61, 39],
+      [4, 40, 18, 2, 41, 19],
+      [4, 40, 14, 2, 41, 15],
+
+      // 9
+      [2, 146, 116],
+      [3, 58, 36, 2, 59, 37],
+      [4, 36, 16, 4, 37, 17],
+      [4, 36, 12, 4, 37, 13],
+
+      // 10
+      [2, 86, 68, 2, 87, 69],
+      [4, 69, 43, 1, 70, 44],
+      [6, 43, 19, 2, 44, 20],
+      [6, 43, 15, 2, 44, 16],
+
+      // 11
+      [4, 101, 81],
+      [1, 80, 50, 4, 81, 51],
+      [4, 50, 22, 4, 51, 23],
+      [3, 36, 12, 8, 37, 13],
+
+      // 12
+      [2, 116, 92, 2, 117, 93],
+      [6, 58, 36, 2, 59, 37],
+      [4, 46, 20, 6, 47, 21],
+      [7, 42, 14, 4, 43, 15],
+
+      // 13
+      [4, 133, 107],
+      [8, 59, 37, 1, 60, 38],
+      [8, 44, 20, 4, 45, 21],
+      [12, 33, 11, 4, 34, 12],
+
+      // 14
+      [3, 145, 115, 1, 146, 116],
+      [4, 64, 40, 5, 65, 41],
+      [11, 36, 16, 5, 37, 17],
+      [11, 36, 12, 5, 37, 13],
+
+      // 15
+      [5, 109, 87, 1, 110, 88],
+      [5, 65, 41, 5, 66, 42],
+      [5, 54, 24, 7, 55, 25],
+      [11, 36, 12, 7, 37, 13],
+
+      // 16
+      [5, 122, 98, 1, 123, 99],
+      [7, 73, 45, 3, 74, 46],
+      [15, 43, 19, 2, 44, 20],
+      [3, 45, 15, 13, 46, 16],
+
+      // 17
+      [1, 135, 107, 5, 136, 108],
+      [10, 74, 46, 1, 75, 47],
+      [1, 50, 22, 15, 51, 23],
+      [2, 42, 14, 17, 43, 15],
+
+      // 18
+      [5, 150, 120, 1, 151, 121],
+      [9, 69, 43, 4, 70, 44],
+      [17, 50, 22, 1, 51, 23],
+      [2, 42, 14, 19, 43, 15],
+
+      // 19
+      [3, 141, 113, 4, 142, 114],
+      [3, 70, 44, 11, 71, 45],
+      [17, 47, 21, 4, 48, 22],
+      [9, 39, 13, 16, 40, 14],
+
+      // 20
+      [3, 135, 107, 5, 136, 108],
+      [3, 67, 41, 13, 68, 42],
+      [15, 54, 24, 5, 55, 25],
+      [15, 43, 15, 10, 44, 16],
+
+      // 21
+      [4, 144, 116, 4, 145, 117],
+      [17, 68, 42],
+      [17, 50, 22, 6, 51, 23],
+      [19, 46, 16, 6, 47, 17],
+
+      // 22
+      [2, 139, 111, 7, 140, 112],
+      [17, 74, 46],
+      [7, 54, 24, 16, 55, 25],
+      [34, 37, 13],
+
+      // 23
+      [4, 151, 121, 5, 152, 122],
+      [4, 75, 47, 14, 76, 48],
+      [11, 54, 24, 14, 55, 25],
+      [16, 45, 15, 14, 46, 16],
+
+      // 24
+      [6, 147, 117, 4, 148, 118],
+      [6, 73, 45, 14, 74, 46],
+      [11, 54, 24, 16, 55, 25],
+      [30, 46, 16, 2, 47, 17],
+
+      // 25
+      [8, 132, 106, 4, 133, 107],
+      [8, 75, 47, 13, 76, 48],
+      [7, 54, 24, 22, 55, 25],
+      [22, 45, 15, 13, 46, 16],
+
+      // 26
+      [10, 142, 114, 2, 143, 115],
+      [19, 74, 46, 4, 75, 47],
+      [28, 50, 22, 6, 51, 23],
+      [33, 46, 16, 4, 47, 17],
+
+      // 27
+      [8, 152, 122, 4, 153, 123],
+      [22, 73, 45, 3, 74, 46],
+      [8, 53, 23, 26, 54, 24],
+      [12, 45, 15, 28, 46, 16],
+
+      // 28
+      [3, 147, 117, 10, 148, 118],
+      [3, 73, 45, 23, 74, 46],
+      [4, 54, 24, 31, 55, 25],
+      [11, 45, 15, 31, 46, 16],
+
+      // 29
+      [7, 146, 116, 7, 147, 117],
+      [21, 73, 45, 7, 74, 46],
+      [1, 53, 23, 37, 54, 24],
+      [19, 45, 15, 26, 46, 16],
+
+      // 30
+      [5, 145, 115, 10, 146, 116],
+      [19, 75, 47, 10, 76, 48],
+      [15, 54, 24, 25, 55, 25],
+      [23, 45, 15, 25, 46, 16],
+
+      // 31
+      [13, 145, 115, 3, 146, 116],
+      [2, 74, 46, 29, 75, 47],
+      [42, 54, 24, 1, 55, 25],
+      [23, 45, 15, 28, 46, 16],
+
+      // 32
+      [17, 145, 115],
+      [10, 74, 46, 23, 75, 47],
+      [10, 54, 24, 35, 55, 25],
+      [19, 45, 15, 35, 46, 16],
+
+      // 33
+      [17, 145, 115, 1, 146, 116],
+      [14, 74, 46, 21, 75, 47],
+      [29, 54, 24, 19, 55, 25],
+      [11, 45, 15, 46, 46, 16],
+
+      // 34
+      [13, 145, 115, 6, 146, 116],
+      [14, 74, 46, 23, 75, 47],
+      [44, 54, 24, 7, 55, 25],
+      [59, 46, 16, 1, 47, 17],
+
+      // 35
+      [12, 151, 121, 7, 152, 122],
+      [12, 75, 47, 26, 76, 48],
+      [39, 54, 24, 14, 55, 25],
+      [22, 45, 15, 41, 46, 16],
+
+      // 36
+      [6, 151, 121, 14, 152, 122],
+      [6, 75, 47, 34, 76, 48],
+      [46, 54, 24, 10, 55, 25],
+      [2, 45, 15, 64, 46, 16],
+
+      // 37
+      [17, 152, 122, 4, 153, 123],
+      [29, 74, 46, 14, 75, 47],
+      [49, 54, 24, 10, 55, 25],
+      [24, 45, 15, 46, 46, 16],
+
+      // 38
+      [4, 152, 122, 18, 153, 123],
+      [13, 74, 46, 32, 75, 47],
+      [48, 54, 24, 14, 55, 25],
+      [42, 45, 15, 32, 46, 16],
+
+      // 39
+      [20, 147, 117, 4, 148, 118],
+      [40, 75, 47, 7, 76, 48],
+      [43, 54, 24, 22, 55, 25],
+      [10, 45, 15, 67, 46, 16],
+
+      // 40
+      [19, 148, 118, 6, 149, 119],
+      [18, 75, 47, 31, 76, 48],
+      [34, 54, 24, 34, 55, 25],
+      [20, 45, 15, 61, 46, 16]
+    ];
+
+    var qrRSBlock = function(totalCount, dataCount) {
+      var _this = {};
+      _this.totalCount = totalCount;
+      _this.dataCount = dataCount;
+      return _this;
+    };
+
+    var _this = {};
+
+    var getRsBlockTable = function(typeNumber, errorCorrectionLevel) {
+
+      switch(errorCorrectionLevel) {
+      case QRErrorCorrectionLevel.L :
+        return RS_BLOCK_TABLE[(typeNumber - 1) * 4 + 0];
+      case QRErrorCorrectionLevel.M :
+        return RS_BLOCK_TABLE[(typeNumber - 1) * 4 + 1];
+      case QRErrorCorrectionLevel.Q :
+        return RS_BLOCK_TABLE[(typeNumber - 1) * 4 + 2];
+      case QRErrorCorrectionLevel.H :
+        return RS_BLOCK_TABLE[(typeNumber - 1) * 4 + 3];
+      default :
+        return undefined;
+      }
+    };
+
+    _this.getRSBlocks = function(typeNumber, errorCorrectionLevel) {
+
+      var rsBlock = getRsBlockTable(typeNumber, errorCorrectionLevel);
+
+      if (typeof rsBlock == 'undefined') {
+        throw 'bad rs block @ typeNumber:' + typeNumber +
+            '/errorCorrectionLevel:' + errorCorrectionLevel;
+      }
+
+      var length = rsBlock.length / 3;
+
+      var list = [];
+
+      for (var i = 0; i < length; i += 1) {
+
+        var count = rsBlock[i * 3 + 0];
+        var totalCount = rsBlock[i * 3 + 1];
+        var dataCount = rsBlock[i * 3 + 2];
+
+        for (var j = 0; j < count; j += 1) {
+          list.push(qrRSBlock(totalCount, dataCount) );
+        }
+      }
+
+      return list;
+    };
+
+    return _this;
+  }();
+
+  //---------------------------------------------------------------------
+  // qrBitBuffer
+  //---------------------------------------------------------------------
+
+  var qrBitBuffer = function() {
+
+    var _buffer = [];
+    var _length = 0;
+
+    var _this = {};
+
+    _this.getBuffer = function() {
+      return _buffer;
+    };
+
+    _this.getAt = function(index) {
+      var bufIndex = Math.floor(index / 8);
+      return ( (_buffer[bufIndex] >>> (7 - index % 8) ) & 1) == 1;
+    };
+
+    _this.put = function(num, length) {
+      for (var i = 0; i < length; i += 1) {
+        _this.putBit( ( (num >>> (length - i - 1) ) & 1) == 1);
+      }
+    };
+
+    _this.getLengthInBits = function() {
+      return _length;
+    };
+
+    _this.putBit = function(bit) {
+
+      var bufIndex = Math.floor(_length / 8);
+      if (_buffer.length <= bufIndex) {
+        _buffer.push(0);
+      }
+
+      if (bit) {
+        _buffer[bufIndex] |= (0x80 >>> (_length % 8) );
+      }
+
+      _length += 1;
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // qrNumber
+  //---------------------------------------------------------------------
+
+  var qrNumber = function(data) {
+
+    var _mode = QRMode.MODE_NUMBER;
+    var _data = data;
+
+    var _this = {};
+
+    _this.getMode = function() {
+      return _mode;
+    };
+
+    _this.getLength = function(buffer) {
+      return _data.length;
+    };
+
+    _this.write = function(buffer) {
+
+      var data = _data;
+
+      var i = 0;
+
+      while (i + 2 < data.length) {
+        buffer.put(strToNum(data.substring(i, i + 3) ), 10);
+        i += 3;
+      }
+
+      if (i < data.length) {
+        if (data.length - i == 1) {
+          buffer.put(strToNum(data.substring(i, i + 1) ), 4);
+        } else if (data.length - i == 2) {
+          buffer.put(strToNum(data.substring(i, i + 2) ), 7);
+        }
+      }
+    };
+
+    var strToNum = function(s) {
+      var num = 0;
+      for (var i = 0; i < s.length; i += 1) {
+        num = num * 10 + chatToNum(s.charAt(i) );
+      }
+      return num;
+    };
+
+    var chatToNum = function(c) {
+      if ('0' <= c && c <= '9') {
+        return c.charCodeAt(0) - '0'.charCodeAt(0);
+      }
+      throw 'illegal char :' + c;
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // qrAlphaNum
+  //---------------------------------------------------------------------
+
+  var qrAlphaNum = function(data) {
+
+    var _mode = QRMode.MODE_ALPHA_NUM;
+    var _data = data;
+
+    var _this = {};
+
+    _this.getMode = function() {
+      return _mode;
+    };
+
+    _this.getLength = function(buffer) {
+      return _data.length;
+    };
+
+    _this.write = function(buffer) {
+
+      var s = _data;
+
+      var i = 0;
+
+      while (i + 1 < s.length) {
+        buffer.put(
+          getCode(s.charAt(i) ) * 45 +
+          getCode(s.charAt(i + 1) ), 11);
+        i += 2;
+      }
+
+      if (i < s.length) {
+        buffer.put(getCode(s.charAt(i) ), 6);
+      }
+    };
+
+    var getCode = function(c) {
+
+      if ('0' <= c && c <= '9') {
+        return c.charCodeAt(0) - '0'.charCodeAt(0);
+      } else if ('A' <= c && c <= 'Z') {
+        return c.charCodeAt(0) - 'A'.charCodeAt(0) + 10;
+      } else {
+        switch (c) {
+        case ' ' : return 36;
+        case '$' : return 37;
+        case '%' : return 38;
+        case '*' : return 39;
+        case '+' : return 40;
+        case '-' : return 41;
+        case '.' : return 42;
+        case '/' : return 43;
+        case ':' : return 44;
+        default :
+          throw 'illegal char :' + c;
+        }
+      }
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // qr8BitByte
+  //---------------------------------------------------------------------
+
+  var qr8BitByte = function(data) {
+
+    var _mode = QRMode.MODE_8BIT_BYTE;
+    var _data = data;
+    var _bytes = qrcode.stringToBytes(data);
+
+    var _this = {};
+
+    _this.getMode = function() {
+      return _mode;
+    };
+
+    _this.getLength = function(buffer) {
+      return _bytes.length;
+    };
+
+    _this.write = function(buffer) {
+      for (var i = 0; i < _bytes.length; i += 1) {
+        buffer.put(_bytes[i], 8);
+      }
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // qrKanji
+  //---------------------------------------------------------------------
+
+  var qrKanji = function(data) {
+
+    var _mode = QRMode.MODE_KANJI;
+    var _data = data;
+
+    var stringToBytes = qrcode.stringToBytesFuncs['SJIS'];
+    if (!stringToBytes) {
+      throw 'sjis not supported.';
+    }
+    !function(c, code) {
+      // self test for sjis support.
+      var test = stringToBytes(c);
+      if (test.length != 2 || ( (test[0] << 8) | test[1]) != code) {
+        throw 'sjis not supported.';
+      }
+    }('\u53cb', 0x9746);
+
+    var _bytes = stringToBytes(data);
+
+    var _this = {};
+
+    _this.getMode = function() {
+      return _mode;
+    };
+
+    _this.getLength = function(buffer) {
+      return ~~(_bytes.length / 2);
+    };
+
+    _this.write = function(buffer) {
+
+      var data = _bytes;
+
+      var i = 0;
+
+      while (i + 1 < data.length) {
+
+        var c = ( (0xff & data[i]) << 8) | (0xff & data[i + 1]);
+
+        if (0x8140 <= c && c <= 0x9FFC) {
+          c -= 0x8140;
+        } else if (0xE040 <= c && c <= 0xEBBF) {
+          c -= 0xC140;
+        } else {
+          throw 'illegal char at ' + (i + 1) + '/' + c;
+        }
+
+        c = ( (c >>> 8) & 0xff) * 0xC0 + (c & 0xff);
+
+        buffer.put(c, 13);
+
+        i += 2;
+      }
+
+      if (i < data.length) {
+        throw 'illegal char at ' + (i + 1);
+      }
+    };
+
+    return _this;
+  };
+
+  //=====================================================================
+  // GIF Support etc.
+  //
+
+  //---------------------------------------------------------------------
+  // byteArrayOutputStream
+  //---------------------------------------------------------------------
+
+  var byteArrayOutputStream = function() {
+
+    var _bytes = [];
+
+    var _this = {};
+
+    _this.writeByte = function(b) {
+      _bytes.push(b & 0xff);
+    };
+
+    _this.writeShort = function(i) {
+      _this.writeByte(i);
+      _this.writeByte(i >>> 8);
+    };
+
+    _this.writeBytes = function(b, off, len) {
+      off = off || 0;
+      len = len || b.length;
+      for (var i = 0; i < len; i += 1) {
+        _this.writeByte(b[i + off]);
+      }
+    };
+
+    _this.writeString = function(s) {
+      for (var i = 0; i < s.length; i += 1) {
+        _this.writeByte(s.charCodeAt(i) );
+      }
+    };
+
+    _this.toByteArray = function() {
+      return _bytes;
+    };
+
+    _this.toString = function() {
+      var s = '';
+      s += '[';
+      for (var i = 0; i < _bytes.length; i += 1) {
+        if (i > 0) {
+          s += ',';
+        }
+        s += _bytes[i];
+      }
+      s += ']';
+      return s;
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // base64EncodeOutputStream
+  //---------------------------------------------------------------------
+
+  var base64EncodeOutputStream = function() {
+
+    var _buffer = 0;
+    var _buflen = 0;
+    var _length = 0;
+    var _base64 = '';
+
+    var _this = {};
+
+    var writeEncoded = function(b) {
+      _base64 += String.fromCharCode(encode(b & 0x3f) );
+    };
+
+    var encode = function(n) {
+      if (n < 0) {
+        // error.
+      } else if (n < 26) {
+        return 0x41 + n;
+      } else if (n < 52) {
+        return 0x61 + (n - 26);
+      } else if (n < 62) {
+        return 0x30 + (n - 52);
+      } else if (n == 62) {
+        return 0x2b;
+      } else if (n == 63) {
+        return 0x2f;
+      }
+      throw 'n:' + n;
+    };
+
+    _this.writeByte = function(n) {
+
+      _buffer = (_buffer << 8) | (n & 0xff);
+      _buflen += 8;
+      _length += 1;
+
+      while (_buflen >= 6) {
+        writeEncoded(_buffer >>> (_buflen - 6) );
+        _buflen -= 6;
+      }
+    };
+
+    _this.flush = function() {
+
+      if (_buflen > 0) {
+        writeEncoded(_buffer << (6 - _buflen) );
+        _buffer = 0;
+        _buflen = 0;
+      }
+
+      if (_length % 3 != 0) {
+        // padding
+        var padlen = 3 - _length % 3;
+        for (var i = 0; i < padlen; i += 1) {
+          _base64 += '=';
+        }
+      }
+    };
+
+    _this.toString = function() {
+      return _base64;
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // base64DecodeInputStream
+  //---------------------------------------------------------------------
+
+  var base64DecodeInputStream = function(str) {
+
+    var _str = str;
+    var _pos = 0;
+    var _buffer = 0;
+    var _buflen = 0;
+
+    var _this = {};
+
+    _this.read = function() {
+
+      while (_buflen < 8) {
+
+        if (_pos >= _str.length) {
+          if (_buflen == 0) {
+            return -1;
+          }
+          throw 'unexpected end of file./' + _buflen;
+        }
+
+        var c = _str.charAt(_pos);
+        _pos += 1;
+
+        if (c == '=') {
+          _buflen = 0;
+          return -1;
+        } else if (c.match(/^\s$/) ) {
+          // ignore if whitespace.
+          continue;
+        }
+
+        _buffer = (_buffer << 6) | decode(c.charCodeAt(0) );
+        _buflen += 6;
+      }
+
+      var n = (_buffer >>> (_buflen - 8) ) & 0xff;
+      _buflen -= 8;
+      return n;
+    };
+
+    var decode = function(c) {
+      if (0x41 <= c && c <= 0x5a) {
+        return c - 0x41;
+      } else if (0x61 <= c && c <= 0x7a) {
+        return c - 0x61 + 26;
+      } else if (0x30 <= c && c <= 0x39) {
+        return c - 0x30 + 52;
+      } else if (c == 0x2b) {
+        return 62;
+      } else if (c == 0x2f) {
+        return 63;
+      } else {
+        throw 'c:' + c;
+      }
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // gifImage (B/W)
+  //---------------------------------------------------------------------
+
+  var gifImage = function(width, height) {
+
+    var _width = width;
+    var _height = height;
+    var _data = new Array(width * height);
+
+    var _this = {};
+
+    _this.setPixel = function(x, y, pixel) {
+      _data[y * _width + x] = pixel;
+    };
+
+    _this.write = function(out) {
+
+      //---------------------------------
+      // GIF Signature
+
+      out.writeString('GIF87a');
+
+      //---------------------------------
+      // Screen Descriptor
+
+      out.writeShort(_width);
+      out.writeShort(_height);
+
+      out.writeByte(0x80); // 2bit
+      out.writeByte(0);
+      out.writeByte(0);
+
+      //---------------------------------
+      // Global Color Map
+
+      // black
+      out.writeByte(0x00);
+      out.writeByte(0x00);
+      out.writeByte(0x00);
+
+      // white
+      out.writeByte(0xff);
+      out.writeByte(0xff);
+      out.writeByte(0xff);
+
+      //---------------------------------
+      // Image Descriptor
+
+      out.writeString(',');
+      out.writeShort(0);
+      out.writeShort(0);
+      out.writeShort(_width);
+      out.writeShort(_height);
+      out.writeByte(0);
+
+      //---------------------------------
+      // Local Color Map
+
+      //---------------------------------
+      // Raster Data
+
+      var lzwMinCodeSize = 2;
+      var raster = getLZWRaster(lzwMinCodeSize);
+
+      out.writeByte(lzwMinCodeSize);
+
+      var offset = 0;
+
+      while (raster.length - offset > 255) {
+        out.writeByte(255);
+        out.writeBytes(raster, offset, 255);
+        offset += 255;
+      }
+
+      out.writeByte(raster.length - offset);
+      out.writeBytes(raster, offset, raster.length - offset);
+      out.writeByte(0x00);
+
+      //---------------------------------
+      // GIF Terminator
+      out.writeString(';');
+    };
+
+    var bitOutputStream = function(out) {
+
+      var _out = out;
+      var _bitLength = 0;
+      var _bitBuffer = 0;
+
+      var _this = {};
+
+      _this.write = function(data, length) {
+
+        if ( (data >>> length) != 0) {
+          throw 'length over';
+        }
+
+        while (_bitLength + length >= 8) {
+          _out.writeByte(0xff & ( (data << _bitLength) | _bitBuffer) );
+          length -= (8 - _bitLength);
+          data >>>= (8 - _bitLength);
+          _bitBuffer = 0;
+          _bitLength = 0;
+        }
+
+        _bitBuffer = (data << _bitLength) | _bitBuffer;
+        _bitLength = _bitLength + length;
+      };
+
+      _this.flush = function() {
+        if (_bitLength > 0) {
+          _out.writeByte(_bitBuffer);
+        }
+      };
+
+      return _this;
+    };
+
+    var getLZWRaster = function(lzwMinCodeSize) {
+
+      var clearCode = 1 << lzwMinCodeSize;
+      var endCode = (1 << lzwMinCodeSize) + 1;
+      var bitLength = lzwMinCodeSize + 1;
+
+      // Setup LZWTable
+      var table = lzwTable();
+
+      for (var i = 0; i < clearCode; i += 1) {
+        table.add(String.fromCharCode(i) );
+      }
+      table.add(String.fromCharCode(clearCode) );
+      table.add(String.fromCharCode(endCode) );
+
+      var byteOut = byteArrayOutputStream();
+      var bitOut = bitOutputStream(byteOut);
+
+      // clear code
+      bitOut.write(clearCode, bitLength);
+
+      var dataIndex = 0;
+
+      var s = String.fromCharCode(_data[dataIndex]);
+      dataIndex += 1;
+
+      while (dataIndex < _data.length) {
+
+        var c = String.fromCharCode(_data[dataIndex]);
+        dataIndex += 1;
+
+        if (table.contains(s + c) ) {
+
+          s = s + c;
+
+        } else {
+
+          bitOut.write(table.indexOf(s), bitLength);
+
+          if (table.size() < 0xfff) {
+
+            if (table.size() == (1 << bitLength) ) {
+              bitLength += 1;
+            }
+
+            table.add(s + c);
+          }
+
+          s = c;
+        }
+      }
+
+      bitOut.write(table.indexOf(s), bitLength);
+
+      // end code
+      bitOut.write(endCode, bitLength);
+
+      bitOut.flush();
+
+      return byteOut.toByteArray();
+    };
+
+    var lzwTable = function() {
+
+      var _map = {};
+      var _size = 0;
+
+      var _this = {};
+
+      _this.add = function(key) {
+        if (_this.contains(key) ) {
+          throw 'dup key:' + key;
+        }
+        _map[key] = _size;
+        _size += 1;
+      };
+
+      _this.size = function() {
+        return _size;
+      };
+
+      _this.indexOf = function(key) {
+        return _map[key];
+      };
+
+      _this.contains = function(key) {
+        return typeof _map[key] != 'undefined';
+      };
+
+      return _this;
+    };
+
+    return _this;
+  };
+
+  var createDataURL = function(width, height, getPixel) {
+    var gif = gifImage(width, height);
+    for (var y = 0; y < height; y += 1) {
+      for (var x = 0; x < width; x += 1) {
+        gif.setPixel(x, y, getPixel(x, y) );
+      }
+    }
+
+    var b = byteArrayOutputStream();
+    gif.write(b);
+
+    var base64 = base64EncodeOutputStream();
+    var bytes = b.toByteArray();
+    for (var i = 0; i < bytes.length; i += 1) {
+      base64.writeByte(bytes[i]);
+    }
+    base64.flush();
+
+    return 'data:image/gif;base64,' + base64;
+  };
+
+  //---------------------------------------------------------------------
+  // returns qrcode function.
+
+  return qrcode;
+}();
+
+// multibyte support
+!function() {
+
+  qrcode.stringToBytesFuncs['UTF-8'] = function(s) {
+    // http://stackoverflow.com/questions/18729405/how-to-convert-utf8-string-to-byte-array
+    function toUTF8Array(str) {
+      var utf8 = [];
+      for (var i=0; i < str.length; i++) {
+        var charcode = str.charCodeAt(i);
+        if (charcode < 0x80) utf8.push(charcode);
+        else if (charcode < 0x800) {
+          utf8.push(0xc0 | (charcode >> 6),
+              0x80 | (charcode & 0x3f));
+        }
+        else if (charcode < 0xd800 || charcode >= 0xe000) {
+          utf8.push(0xe0 | (charcode >> 12),
+              0x80 | ((charcode>>6) & 0x3f),
+              0x80 | (charcode & 0x3f));
+        }
+        // surrogate pair
+        else {
+          i++;
+          // UTF-16 encodes 0x10000-0x10FFFF by
+          // subtracting 0x10000 and splitting the
+          // 20 bits of 0x0-0xFFFFF into two halves
+          charcode = 0x10000 + (((charcode & 0x3ff)<<10)
+            | (str.charCodeAt(i) & 0x3ff));
+          utf8.push(0xf0 | (charcode >>18),
+              0x80 | ((charcode>>12) & 0x3f),
+              0x80 | ((charcode>>6) & 0x3f),
+              0x80 | (charcode & 0x3f));
+        }
+      }
+      return utf8;
+    }
+    return toUTF8Array(s);
+  };
+
+}();
+
+(function (factory) {
+  if (typeof define === 'function' && define.amd) {
+      define([], factory);
+  } else if (typeof exports === 'object') {
+      module.exports = factory();
+  }
+}(function () {
+    return qrcode;
+}));
+
+</script>
 <script>
 {
 const {useState,useEffect,useMemo,useRef,useCallback}=React;
@@ -272,7 +2572,7 @@ const CONFIG_PADRAO={
   {id:'recebido',nome:'Confirmar pedido recebido',texto:'Olá, {cliente}! Recebemos seu pedido *#{pedido}* na RIBER PRINT.\n\nProdutos: {itens}\nValor total: {valor}\n\nObrigado!'},
   {id:'arquivo',nome:'Solicitar arquivo',texto:'Olá, {cliente}! Para darmos andamento ao pedido *#{pedido}*, envie por aqui o arquivo da arte (PNG com fundo transparente, 300 DPI).'},
   {id:'aprovacao',nome:'Solicitar aprovação',texto:'Olá, {cliente}! Segue a arte do pedido *#{pedido}* para aprovação. Podemos seguir com a produção?'},
-  {id:'pagamento',nome:'Solicitar pagamento',texto:'Olá, {cliente}! O pedido *#{pedido}* de *{valor}* aguarda pagamento (saldo {saldo}).\n\nChave PIX: {pix}'},
+  {id:'pagamento',nome:'Solicitar pagamento',texto:'Olá, {cliente}! O pedido *#{pedido}* de *{valor}* aguarda pagamento (saldo {saldo}).\n\nChave PIX: {pix}\n\nPIX copia e cola (valor já preenchido):\n{pix_copia}'},
   {id:'pago',nome:'Confirmar pagamento',texto:'Olá, {cliente}! Confirmamos o pagamento do pedido *#{pedido}*. Obrigado!'},
   {id:'producao',nome:'Informar início da produção',texto:'Olá, {cliente}! Seu pedido *#{pedido}* entrou em produção.'},
   {id:'pronto',nome:'Informar pedido pronto',texto:'Olá, {cliente}! Tudo bem?\n\nSeu pedido *#{pedido}* está pronto para retirada na RIBER PRINT.\n\nProdutos: {itens}\n\nValor total: {valor}\n\nSituação do pagamento: {status}\n\nAgradecemos pela preferência!'},
@@ -298,6 +2598,24 @@ function precoPara(prod,cli,qtd,varId){
  if(cli&&prod.tipoDtf&&['metro_linear','metro_quadrado'].includes(prod.unidade)&&Number(cli.precoMetro)>0){preco=Number(cli.precoMetro);origem='preço do cliente';
   const rg=(cli.regras||[]).filter(r=>Number(r.min)>0&&Number(r.min)<=qtd&&Number(r.preco)>0).sort((a,b)=>b.min-a.min)[0];if(rg){preco=Number(rg.preco);origem='promoção '+num(rg.min)+' m+'}}
  return{preco:r2(preco),desc:Number(cli&&cli.desconto||0),origem}}
+/* ---- PIX: BR Code (copia e cola) com valor, gerado localmente, e QR Code ---- */
+const semAcento=t=>String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Za-z0-9 ]/g,'').trim();
+function crc16(str){let c=0xFFFF;for(let i=0;i<str.length;i++){c^=str.charCodeAt(i)<<8;for(let j=0;j<8;j++)c=c&0x8000?((c<<1)^0x1021)&0xFFFF:(c<<1)&0xFFFF}return c.toString(16).toUpperCase().padStart(4,'0')}
+function chavePix(E){const k=String(E.pix||'').trim();if(!k)return'';const t=E.pixTipo||(k.includes('@')?'email':/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(k)?'aleatoria':k.startsWith('+')?'telefone':dig(k).length===14?'cnpj':'cpf');
+ if(t==='email')return k.toLowerCase();if(t==='telefone'){const d=dig(k);return'+'+(d.startsWith('55')&&d.length>=12?d:'55'+d)}if(t==='cpf'||t==='cnpj')return dig(k);return k}
+function pixCopiaCola(E,valor,txid){const chave=chavePix(E);if(!chave)return'';const f=(id,v)=>id+String(v.length).padStart(2,'0')+v;
+ const conta=f('00','br.gov.bcb.pix')+f('01',chave);const tx=(semAcento(txid||'').replace(/ /g,'')||'***').slice(0,25);
+ let pl=f('00','01')+f('26',conta)+f('52','0000')+f('53','986')+(valor>0?f('54',Number(valor).toFixed(2)):'')+f('58','BR')+f('59',(semAcento(E.pixNome||E.nome)||'RECEBEDOR').slice(0,25))+f('60',(semAcento(E.pixCidade||E.cidade)||'FRANCA').slice(0,15))+f('62',f('05',tx))+'6304';
+ return pl+crc16(pl)}
+function qrSvg(texto,tam){if(!texto||typeof qrcode!=='function')return'';const q=qrcode(0,'M');q.addData(texto);q.make();const n=q.getModuleCount(),m=4,t=n+m*2;let d='';for(let r=0;r<n;r++)for(let c=0;c<n;c++)if(q.isDark(r,c))d+='M'+(c+m)+' '+(r+m)+'h1v1h-1z';
+ return'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+t+' '+t+'" width="'+(tam||200)+'" height="'+(tam||200)+'" shape-rendering="crispEdges"><rect width="100%" height="100%" fill="#fff"/><path d="'+d+'" fill="#000"/></svg>'}
+const qrUri=(t,tam)=>{const s=qrSvg(t,tam);return s?'data:image/svg+xml;base64,'+btoa(s):''};
+function PixDlg({cfg,valor,txid,titulo,onClose}){const cc=pixCopiaCola(cfg.empresa,valor,txid);const [ok,setOk]=useState(false);
+ const copiar=async()=>{try{await navigator.clipboard.writeText(cc);setOk(true);setTimeout(()=>setOk(false),2000)}catch(e){}};
+ return html`<${Modal} title=${titulo||'PIX'} sub=${moeda(valor)+' · chave '+(cfg.empresa.pix||'não cadastrada')} onClose=${onClose}>${!cc?html`<div className="sm">Cadastre a chave PIX em Configurações → Empresa.</div>`:html`<div style=${{display:'grid',gap:12,justifyItems:'center'}}>
+  <img src=${qrUri(cc,240)} width="240" height="240" alt="QR Code PIX" style=${{borderRadius:8,border:'1px solid var(--line)'}}/>
+  <textarea className="in" readOnly style=${{width:'100%',fontFamily:'Geist Mono,monospace',fontSize:12,minHeight:84}} value=${cc} onFocus=${e=>e.target.select()}></textarea>
+  <button className="btn p" onClick=${copiar}>${ok?'Copiado!':'Copiar PIX copia e cola'}</button><div className="sm mut">O cliente paga escaneando o QR ou colando o código no app do banco; o valor já vem preenchido.</div></div>`}<//>`}
 /* CEP (ViaCEP) e frete (Melhor Envio) — só na versão hospedada, que tem acesso à internet */
 const ONLINE=()=>!!window.RP_HOSTED;
 const cepCache={};
@@ -398,6 +2716,11 @@ function App(){
  const meuPapel=pap.rows.find(r=>r.id===me)||{};const papel=owner?'admin':meuPapel.papel||null;
  BAIXA={...BAIXA_PADRAO,...(cfg.baixaPedido||{})};
  const pode=useCallback(k=>{if(!papel)return false;if(papel!=='admin'&&Array.isArray(meuPapel.perms))return meuPapel.perms.includes(k);const p=PAPEIS[papel];return!!p&&(p.perms==='*'||p.perms.includes(k))},[papel,JSON.stringify(meuPapel.perms||null)]);
+ // fechamentos automáticos (períodos encerrados após a data em que foi ligado)
+ const fechando=useRef(false);
+ useEffect(()=>{const A=cfg.fechAuto;if(!db||!A||!A.ativo||!A.desde||fechando.current||!ped.ok||!fch.ok||!cli.ok||!(owner||pode('pagar')))return;
+  const lista=fechPendentes(cli.rows,ped.rows,fch.rows,A.desde);if(!lista.length)return;fechando.current=true;
+  (async()=>{let n=0;for(const x of lista.slice(0,30)){try{if(await gerarFechamento(db,x,fch.rows,cfg,me,true))n++}catch(e){break}}if(n)toast(n+' fechamento(s) gerado(s) automaticamente — revise em Fechamentos')})().finally(()=>{setTimeout(()=>{fechando.current=false},5000)})},[db,cfg.fechAuto,ped.rows.length,fch.rows.length,cli.ok,papel]);
  // baixa automática de matéria-prima pelos pedidos concluídos (idempotente: cada ajuste tem chave única)
  const baixando=useRef(false);const falhas=useRef(new Set());const [tick,setTick]=useState(0);
  useEffect(()=>{if(!db||!papel||!ped.ok||!ins.ok||!maq.ok||baixando.current||!(pode('mover')||pode('ops')||pode('estoque')))return;const c={maquinas:maq.rows,insumos:ins.rows,cfgB:cfg.baixaPedido,me};
@@ -464,7 +2787,7 @@ function Busca({clientes,pedidos,produtos,abrir,setForm}){
   ${f&&res.length>0&&html`<div className="card res">${res.map((r,i)=>html`<button key=${i} onMouseDown=${()=>{r[2]();setQ('')}}><span className="b">${r[0]}</span><span className="mut sm">${r[1]}</span></button>`)}</div>`}</div>`}
 
 /* ---------------- dashboard ---------------- */
-function Dashboard({pedidos,clientes,cfg,pode,abrir,ir,impressoes=[],insumos=[]}){
+function Dashboard({pedidos,clientes,cfg,pode,abrir,ir,impressoes=[],insumos=[],fechamentos=[]}){
  const [per,setPer]=useState('30d');const [ci,setCi]=useState(intervalo('30d'));const [cmp,setCmp]=useState(true);
  const [ini,fim]=per==='pers'?ci:intervalo(per);const n=diasEntre(ini,fim);const iniA=addD(ini,-n),fimA=addD(ini,-1);
  const k=(a,b)=>{const ps=pedidos.filter(p=>p.dia>=a&&p.dia<=b);const at=ps.filter(p=>!p.cancelado);
@@ -503,6 +2826,12 @@ function Dashboard({pedidos,clientes,cfg,pode,abrir,ir,impressoes=[],insumos=[]}
    <${K} t="Peças de vestuário" v=${num(A.pc,0)} a=${A.pc} b=${B.pc} s=${A.novos+' clientes novos'}/>
    ${pode('custos')?html`<${K} t="Lucro bruto estimado" v=${moeda(lucro)} a=${lucro} b=${B.fat-B.custo} s=${'Margem '+pct(A.fat?lucro/A.fat*100:null)}/>`:html`<${K} t="Pedidos atrasados" v=${atrasados}/>`}
   </div>
+  ${(()=>{const pv=previsaoInsumos(insumos).filter(i=>i.zerado||i.baixo||(i.dias!=null&&i.dias<=7)).sort((a,b)=>(a.dias??-1)-(b.dias??-1));const pend=fechPendentes(clientes,pedidos,fechamentos,addD(diaSP(),-Number(cfg.fechAuto?.dias||45))).length;
+   const atras=pode('pagar')?pedidos.filter(p=>!p.cancelado&&p.saldo>0.009&&diasEntre(p.dia,diaSP())>31).length:0;if(!pv.length&&!pend&&!atras)return null;
+   return html`<div className="grid g3" style=${{marginBottom:12}}>
+    ${pv.length>0&&html`<button className="card pad" style=${{textAlign:'left',cursor:'pointer',borderColor:'var(--warn)',font:'inherit',color:'inherit'}} onClick=${()=>ir('insumos')}><b>⚠ Matéria-prima acabando</b><div className="sm" style=${{marginTop:6,display:'grid',gap:3}}>${pv.slice(0,4).map(i=>html`<div key=${i.id} className="row between"><span>${i.nome}</span><span className="tab b" style=${{color:i.zerado||i.dias<=3?'var(--red2)':'var(--warn)'}}>${i.zerado?'zerado':i.dias==null?'abaixo do mínimo':'~'+num(i.dias,0)+' dias'}</span></div>`)}</div><div className="sm mut" style=${{marginTop:6}}>Abrir lista de compras em Matéria-prima</div></button>`}
+    ${pend>0&&html`<button className="card pad" style=${{textAlign:'left',cursor:'pointer',font:'inherit',color:'inherit'}} onClick=${()=>ir('fechamentos')}><b>${pend} fechamento(s) para gerar</b><div className="sm mut" style=${{marginTop:6}}>Períodos encerrados com pedidos em aberto. Abra Fechamentos → Para fechar.</div></button>`}
+    ${atras>0&&html`<button className="card pad" style=${{textAlign:'left',cursor:'pointer',font:'inherit',color:'inherit'}} onClick=${()=>ir('fechamentos')}><b>${atras} pedido(s) em aberto há mais de 30 dias</b><div className="sm mut" style=${{marginTop:6}}>Veja quem cobrar em Fechamentos → Cobrança.</div></button>`}</div>`})()}
   ${pode('fat')&&Number(cfg.meta)>0&&(()=>{const h=diaSP();const i0=h.slice(0,8)+'01';const ult=new Date(Date.UTC(+h.slice(0,4),+h.slice(5,7),0)).getUTCDate();const dp=+h.slice(8,10);
    const ps=pedidos.filter(p=>!p.cancelado&&p.dia>=i0&&p.dia<=h);const f=sum(ps,p=>p.total),m=sum(ps,p=>(p.totais?.mt||0)+(p.totais?.mu||0));const proj=f/dp*ult;const meta=Number(cfg.meta);const pc=Math.min(100,f/meta*100);
    return html`<div className="card pad" style=${{marginBottom:12}}><div className="row between"><div><b>Meta do mês: ${moeda(meta)}</b><div className="sm mut">${moeda(f)} faturados (${pct(f/meta*100)}) · ${num(m)} m · faltam ${moeda(Math.max(0,meta-f))} em ${ult-dp} dias</div></div>
@@ -679,7 +3008,7 @@ function PedidoDetalhe({db,id,pedidos,clientes,produtos,cfg,me,pode,toast,onClos
  const et=cfg.etapas.find(e=>e.id===p.etapaId);const cli=clientes.find(c=>c.id===p.clienteId);
  const salvar=async(np,msg)=>{try{const {id:_x,...c}=normalizar(np,me);await db.doc('pedidos/'+p.id).set(c);msg&&toast(msg)}catch(e){toast('Erro ao salvar: '+(e.message||e.code),1)}};
  const itensTxt=(p.itens||[]).map(i=>num(i.qtd)+' '+UNID[i.unidade][1]+' '+i.descricao).join(', ');
- const vars={cliente:(p.clienteNome||'').split(' ')[0],pedido:p.numero,itens:itensTxt,valor:moeda(p.total),saldo:moeda(p.saldo),status:FIN[p.statusFin][0],pix:cfg.empresa.pix,horario:cfg.empresa.horario};
+ const vars={cliente:(p.clienteNome||'').split(' ')[0],pedido:p.numero,itens:itensTxt,valor:moeda(p.total),saldo:moeda(p.saldo),status:FIN[p.statusFin][0],pix:cfg.empresa.pix,pix_copia:pixCopiaCola(cfg.empresa,p.saldo,'PED'+p.numero),horario:cfg.empresa.horario};
  const whats=cli?.whatsapp||p.clienteWhats;const ops=Object.entries(p.ordens||{});const pctOp=ops.length?Math.round(ops.filter(o=>o[1]==='concluida').length/ops.length*100):0;
  const nome=k=>nomes[k]||(k===me?'Você':'Colaborador');
  const comprovante=async()=>{const dl=await claude.use('downloads');if(!dl)return toast('Download indisponível nesta visualização',1);const E=cfg.empresa;const esc=s=>String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
@@ -688,7 +3017,7 @@ function PedidoDetalhe({db,id,pedidos,clientes,produtos,cfg,me,pode,toast,onClos
   '<p><b>Cliente:</b> '+esc(p.clienteNome)+(cli&&cli.doc?' · '+docFmt(cli.doc):'')+(whats?' · '+fone(whats):'')+'</p><table><tr><th>Item</th><th class="r">Qtd</th><th class="r">Unitário</th><th class="r">Desconto</th><th class="r">Subtotal</th></tr>'+
   p.itens.map(i=>'<tr><td>'+esc(i.descricao)+(i.obs?' — '+esc(i.obs):'')+'</td><td class="r">'+num(i.qtd,3)+' '+UNID[i.unidade][1]+'</td><td class="r">'+moeda(i.preco)+'</td><td class="r">'+(i.desconto?moeda(i.desconto):'—')+'</td><td class="r">'+moeda(r2(i.qtd*i.preco-i.desconto))+'</td></tr>').join('')+
   '</table><table style="width:300px;margin-left:auto"><tr><td>Frete</td><td class="r">'+moeda(p.frete)+'</td></tr><tr><td>Desconto</td><td class="r">'+moeda(p.desconto)+'</td></tr><tr class="t"><td>Total</td><td class="r">'+moeda(p.total)+'</td></tr><tr><td>Pago</td><td class="r">'+moeda(p.pago)+'</td></tr><tr><td>Saldo</td><td class="r">'+moeda(p.saldo)+'</td></tr></table>'+
-  (p.obsCliente?'<p><b>Observações:</b> '+esc(p.obsCliente)+'</p>':'')+(E.pix&&p.saldo>0?'<p><b>Chave PIX:</b> '+esc(E.pix)+'</p>':'')+'<p style="margin-top:40px;text-align:center;color:#666">'+esc(E.nome)+' — Impressão e Personalização</p></html>';
+  (p.obsCliente?'<p><b>Observações:</b> '+esc(p.obsCliente)+'</p>':'')+(E.pix&&p.saldo>0?'<p><b>Chave PIX:</b> '+esc(E.pix)+'</p>':'')+'<p style="margin-top:40px;text-align:center;color:#666">'+esc(E.nome)+' — Impressão e Personalização</p>'+(p.saldo>0&&cfg.empresa.pix?(()=>{const cc=pixCopiaCola(cfg.empresa,p.saldo,'PED'+p.numero);return '<div style="display:flex;gap:16px;align-items:center;margin-top:18px;border:1px solid #ddd;border-radius:8px;padding:12px"><img src="'+qrUri(cc,150)+'" width="150" height="150"><div><b>Pague com PIX: '+moeda(p.saldo)+'</b><div style="font-size:11px;word-break:break-all;margin-top:6px;color:#444">'+esc(cc)+'</div></div></div>'})():'')+'</html>';
   try{await dl.save({filename:'pedido-'+p.numero+'.html',data:h})}catch(e){}};
  const duplicar=async()=>{try{const agora=new Date().toISOString();const numero=await proximoNumero(db,pedidos);const nid='p'+numero+'-'+uid().slice(-4);const e0=cfg.etapas[0];
   const np={numero,criadoEm:agora,atendente:me,clienteId:p.clienteId,clienteNome:p.clienteNome,clienteWhats:p.clienteWhats,prioridade:p.prioridade,previsao:'',forma:p.forma,canal:p.canal,entrega:p.entrega,endereco:p.endereco,frete:p.frete,desconto:p.desconto,
@@ -701,6 +3030,7 @@ function PedidoDetalhe({db,id,pedidos,clientes,produtos,cfg,me,pode,toast,onClos
   ${p.cancelado&&html`<div className="card pad sm" style=${{borderColor:'var(--red2)',marginBottom:12,color:'var(--red2)'}}>Cancelado em ${dhBR(p.cancelado.em)} — ${p.cancelado.motivo}</div>`}
   <div className="row noprint" style=${{marginBottom:14}}>
    ${!p.cancelado&&pode('pagar')&&p.saldo>0&&html`<button className="btn p" onClick=${()=>setDlg('pag')}>Registrar pagamento</button>`}
+   ${!p.cancelado&&p.saldo>0&&cfg.empresa.pix&&html`<button className="btn" onClick=${()=>setDlg('pix')}>PIX (QR Code)</button>`}
    ${!p.cancelado&&pode('autorizar')&&!p.autorizado&&p.statusFin!=='pago'&&html`<button className="btn" onClick=${()=>salvar({...p,autorizado:true,historico:[...p.historico,{em:new Date().toISOString(),por:me,tipo:'autorizacao',obs:'Produção faturada autorizada'}]},'Produção autorizada')}>Autorizar produção</button>`}
    ${!p.cancelado&&pode('editar')&&html`<button className="btn" onClick=${()=>{onClose();setForm({t:'pedido',pedido:p})}}>Editar</button>`}
    ${pode('criar')&&html`<button className="btn" onClick=${duplicar}>Duplicar</button>`}
@@ -736,6 +3066,7 @@ function PedidoDetalhe({db,id,pedidos,clientes,produtos,cfg,me,pode,toast,onClos
     <div className="card pad" style=${{display:'grid',gap:5}}><h2>Entrega</h2><${L} k="Tipo" v=${ENTREGA[p.entrega]}/><${L} k="Previsão" v=${p.previsao?dhBR(p.previsao):'—'}/><${L} k="Pagamento" v=${FORMAS[p.forma]||'A definir'}/>
      ${p.endereco&&html`<div className="sm mut">${p.endereco}</div>`}${p.obsInterna&&html`<div className="sm" style=${{background:'color-mix(in oklab,var(--warn) 14%,transparent)',padding:8,borderRadius:8}}><b>Interno:</b> ${p.obsInterna}</div>`}${p.obsCliente&&html`<div className="sm" style=${{background:'var(--soft)',padding:8,borderRadius:8}}><b>Cliente:</b> ${p.obsCliente}</div>`}</div>
    </div></div>
+  ${dlg==='pix'&&html`<${PixDlg} cfg=${cfg} valor=${p.saldo} txid=${'PED'+p.numero} titulo=${'PIX do pedido #'+p.numero} onClose=${()=>setDlg(null)}/>`}
   ${dlg==='pag'&&html`<${PagamentoDlg} p=${p} onClose=${()=>setDlg(null)} onOk=${x=>{salvar({...p,pagamentos:[...(p.pagamentos||[]),{...x,id:uid(),por:me,registradoEm:new Date().toISOString()}],historico:[...p.historico,{em:new Date().toISOString(),por:me,tipo:'pagamento',obs:'Pagamento de '+moeda(x.valor)+' ('+FORMAS[x.forma]+')'}]},'Pagamento registrado');setDlg(null)}}/>`}
   ${dlg==='cancel'&&html`<${MotivoDlg} titulo=${'Cancelar pedido #'+p.numero} aviso=${p.pago>0?'Este pedido tem '+moeda(p.pago)+' recebidos. Estorne os pagamentos antes de cancelar.':'As reservas de estoque serão liberadas.'} bloqueado=${p.pago>0} onClose=${()=>setDlg(null)}
     onOk=${m=>{const ce=cfg.etapas.find(e=>e.cancela);salvar({...p,cancelado:{em:new Date().toISOString(),por:me,motivo:m},etapaId:ce?ce.id:p.etapaId,etapaDesde:new Date().toISOString(),historico:[...p.historico,{em:new Date().toISOString(),por:me,tipo:'cancelamento',obs:'Cancelado: '+m}]},'Pedido cancelado');setDlg(null)}}/>`}
@@ -1025,14 +3356,36 @@ function previsaoPerfil(pf,insumos,impressoes){const rec=impressoes.filter(r=>!r
  let lim=null,ins=null;for(const f of pf.ficha||[]){const i=insumos.find(x=>x.id===f.insumoId);if(!i||!(pn(f.qtd)>0))continue;const m=Math.max(0,Number(i.estoque||0))/pn(f.qtd);if(lim==null||m<lim){lim=m;ins=i}}
  return{metros:lim,limitante:ins,media,dias:lim!=null&&media>0?lim/media:null}}
 
-function Insumos({db,insumos,maquinas,impressoes,pode,me,toast,cfg}){
+/* previsão de duração do estoque pelo consumo médio dos últimos 30 dias */
+function previsaoInsumos(insumos){const lim=addD(diaSP(),-29);return insumos.filter(i=>i.ativo!==false).map(i=>{const c30=-sum((i.movimentos||[]).filter(m=>(m.tipo==='consumo'||m.tipo==='estorno')&&diaSP(m.em)>=lim),m=>m.q);const dia=c30>0?c30/30:0;const est=Number(i.estoque||0);
+ return{...i,c30,dia,dias:dia>0?Math.max(0,est)/dia:null,baixo:Number(i.minimo)>0&&est<=Number(i.minimo),zerado:est<=0}})}
+function ListaCompras({insumos,cfg,toast,onClose}){const [cob,setCob]=useState(String(cfg.cobertura||15));const pv=useMemo(()=>previsaoInsumos(insumos),[insumos]);
+ const sug=i=>{const alvo=Math.max(i.dia*pn(cob),Number(i.minimo||0)*1.5);return Math.max(0,alvo-Math.max(0,Number(i.estoque||0)))};
+ const base=pv.filter(i=>i.zerado||i.baixo||(i.dias!=null&&i.dias<pn(cob))).sort((a,b)=>(a.dias??-1)-(b.dias??-1));
+ const [q,setQ]=useState(()=>Object.fromEntries(base.map(i=>{const v=sug(i);return[i.id,String(v>=10?Math.ceil(v):Math.ceil(v*100)/100).replace('.',',')]})));
+ useEffect(()=>{setQ(Object.fromEntries(base.map(i=>{const v=sug(i);return[i.id,String(v>=10?Math.ceil(v):Math.ceil(v*100)/100).replace('.',',')]})))},[cob]);
+ const itens=base.filter(i=>pn(q[i.id])>0);const total=sum(itens,i=>pn(q[i.id])*Number(i.ultimoPreco||i.custoMedio||0));
+ const texto='*Lista de compras — '+cfg.empresa.nome+'* ('+dBR(diaSP())+')\n\n'+itens.map(i=>'• '+i.nome+': '+num(pn(q[i.id]),2)+' '+i.unidade).join('\n');
+ const esc=x=>String(x??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+ const imprimir=async()=>{const h='<!doctype html><html lang="pt-BR"><meta charset="utf-8"><title>Lista de compras</title><style>body{font:13px Arial;margin:24px}table{width:100%;border-collapse:collapse;margin-top:12px}th,td{border-bottom:1px solid #ddd;padding:6px;text-align:left}.r{text-align:right}</style><div style="display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #a3089a;padding-bottom:8px"><img src="'+LOGO+'" style="height:44px;background:#000;border-radius:6px"><div style="text-align:right"><b style="font-size:17px">Lista de compras</b><div>'+dBR(diaSP())+' · cobertura de '+esc(cob)+' dias</div></div></div><table><tr><th>Insumo</th><th>Fornecedor</th><th class="r">Estoque</th><th class="r">Dura</th><th class="r">Comprar</th><th class="r">Estimado</th></tr>'+itens.map(i=>'<tr><td>'+esc(i.nome)+'</td><td>'+esc(i.fornecedor||'')+'</td><td class="r">'+num(i.estoque,2)+' '+esc(i.unidade)+'</td><td class="r">'+(i.dias==null?'—':num(i.dias,0)+' dias')+'</td><td class="r"><b>'+num(pn(q[i.id]),2)+' '+esc(i.unidade)+'</b></td><td class="r">'+moeda(pn(q[i.id])*Number(i.ultimoPreco||i.custoMedio||0))+'</td></tr>').join('')+'</table><p class="r"><b>Total estimado: '+moeda(total)+'</b></p></html>';
+  if(ONLINE()){const fr=document.createElement('iframe');fr.style.cssText='position:fixed;width:0;height:0;border:0';document.body.appendChild(fr);fr.srcdoc=h;fr.onload=()=>{try{fr.contentWindow.print()}catch(e){}setTimeout(()=>fr.remove(),60000)};return}
+  const dl=await claude.use('downloads');if(dl)await dl.save({filename:'lista-de-compras-'+diaSP()+'.html',data:h})};
+ const copiar=async()=>{try{await navigator.clipboard.writeText(texto.replace(/\\n/g,'\n'));toast('Lista copiada')}catch(e){toast('Não foi possível copiar',1)}};
+ return html`<${Modal} lg title="Lista de compras" sub="Calculada pelo consumo médio dos últimos 30 dias" onClose=${onClose}>
+  <div className="row" style=${{marginBottom:10}}><span className="sm">Comprar para</span><input className="in tab" style=${{width:80}} value=${cob} onChange=${e=>setCob(e.target.value)}/><span className="sm">dias de produção</span></div>
+  ${base.length===0?html`<${Empty} t="Nada para comprar agora" s=${'Todos os insumos duram mais de '+cob+' dias e estão acima do mínimo.'}/>`:html`<div className="scroll"><table><thead><tr><th>Insumo</th><th className="r">Estoque</th><th className="r">Consumo/dia</th><th className="r">Dura</th><th className="r">Comprar</th><th className="r">Estimado</th></tr></thead><tbody>
+   ${base.map(i=>html`<tr key=${i.id}><td><b>${i.nome}</b><div className="sm mut">${GRUPOS[i.grupo]}${i.fornecedor?' · '+i.fornecedor:''}</div></td><td className="r tab" style=${{color:i.zerado||i.baixo?'var(--red2)':''}}>${num(i.estoque,2)} ${i.unidade}</td><td className="r tab">${num(i.dia,3)}</td><td className="r tab">${i.dias==null?'—':num(i.dias,0)+' d'}</td>
+    <td className="r"><input className="in tab" style=${{width:100,textAlign:'right'}} value=${q[i.id]??''} onChange=${e=>setQ({...q,[i.id]:e.target.value})}/> <span className="sm mut">${i.unidade}</span></td><td className="r tab">${moeda(pn(q[i.id])*Number(i.ultimoPreco||i.custoMedio||0))}</td></tr>`)}</tbody></table></div>
+   <div className="row between" style=${{marginTop:12}}><b className="tab">Total estimado: ${moeda(total)}</b><div className="row"><button className="btn" onClick=${copiar}>Copiar texto</button><a className="btn" href=${'https://wa.me/?text='+encodeURIComponent(texto.replace(/\\n/g,'\n'))} target="_blank" rel="noreferrer"><${Ic} n="wa" s=${14}/>WhatsApp</a><button className="btn p" onClick=${imprimir}><${Ic} n="print" s=${14}/>${ONLINE()?'Imprimir':'Baixar'}</button></div></div>`}<//>`}
+function Insumos({db,insumos,maquinas,impressoes,pode,me,toast,cfg}){const [compras,setCompras]=useState(false);
  const [g,setG]=useState('dtf_textil');const [dlg,setDlg]=useState(null);const [ver,setVer]=useState(null);
  const lista=insumos.filter(i=>i.grupo===g&&i.ativo!==false).sort((a,b)=>a.nome.localeCompare(b.nome));const lim=addD(diaSP(),-29);
  const consumo30=i=>-sum((i.movimentos||[]).filter(m=>(m.tipo==='consumo'||m.tipo==='estorno')&&diaSP(m.em)>=lim),m=>m.q);
  const perfis=maquinas.flatMap(m=>(m.perfis||[]).map(p=>({...p,maq:m}))).filter(p=>g==='geral'||(g==='dtf_textil'?p.maq.tipo==='textil':p.maq.tipo==='uv'));
  return html`<div>
-  <div className="row between" style=${{marginBottom:14}}><div><h1>Matéria-prima</h1><div className="sub">Estoques separados de DTF Têxtil e DTF UV. A Central de impressão abate automaticamente cada metro impresso.</div></div>
-   ${pode('estoque')&&html`<button className="btn p" onClick=${()=>setDlg({t:'novo'})}><${Ic} n="plus"/>Novo insumo</button>`}</div>
+  <div className="row between" style=${{marginBottom:14}}><div><h1>Matéria-prima</h1><div className="sub">Estoques separados de DTF Têxtil e DTF UV. Cada pedido concluído abate o consumo pela ficha da máquina.</div></div>
+   <div className="row"><button className="btn" onClick=${()=>setCompras(true)}>Lista de compras</button>${pode('estoque')&&html`<button className="btn p" onClick=${()=>setDlg({t:'novo'})}><${Ic} n="plus"/>Novo insumo</button>`}</div></div>
+  ${compras&&html`<${ListaCompras} insumos=${insumos} cfg=${cfg} toast=${toast} onClose=${()=>setCompras(false)}/>`}
   <div className="tabs" style=${{marginBottom:12}}>${Object.entries(GRUPOS).map(([k,l])=>html`<button key=${k} className=${g===k?'on':''} onClick=${()=>setG(k)}>${l}</button>`)}</div>
   ${perfis.length>0&&html`<div className="grid g3" style=${{marginBottom:12}}>${perfis.map(p=>{const pv=previsaoPerfil(p,insumos,impressoes);return html`<div key=${p.id} className="card kpi"><div className="t">${p.maq.nome} · ${p.nome}</div>
    <div className="v tab">${pv.metros==null?'—':num(pv.metros,0)+' m'}</div><div className="sm mut">${pv.metros==null?'Cadastre a ficha de consumo na máquina':'possíveis com o estoque atual · limitado por '+pv.limitante.nome+(pv.dias!=null?' · ~'+num(pv.dias,1)+' dias no ritmo atual':'')}</div></div>`})}</div>`}
@@ -1388,8 +3741,45 @@ function fechAtivos(fechamentos){const s=new Set();for(const f of fechamentos)if
 function textoFechamento(f,cfg,pedidosM){const linhas=(f.pedidos||[]).map(x=>{const p=pedidosM[x.id];return ddmm(x.data)+' — Pedido #'+x.numero+' — '+num(x.metros)+' m — '+moeda(p?p.total:x.valor)}).join('\n\n');
  const saldo=sum(f.pedidos||[],x=>{const p=pedidosM[x.id];return p?p.saldo:x.valor});
  return preencher(cfg.msgFechamento||MSG_FECH,{periodicidade:PERIODIC[f.periodicidade]||'',empresa:cfg.empresa.nome,cliente:(f.clienteNome||'').split(' ')[0],inicio:dBR(f.inicio),fim:dBR(f.fim),linhas,metros:num(f.metros),valor:moeda(f.total),
-  saldo_linha:saldo<f.total-0.009?'*Saldo em aberto: '+moeda(saldo)+'.*\n':'',vencimento:dBR(f.vencimento),pix:cfg.empresa.pix})}
-function Fechamentos(ctx){const {db,fechamentos,pedidos,clientes,cfg,pode,me,toast}=ctx;const [st,setSt]=useState('aberto');const [cq,setCq]=useState('');const [novo,setNovo]=useState(false);const [pagar,setPagar]=useState(null);const [lim,setLim]=useState(50);
+  saldo_linha:saldo<f.total-0.009?'*Saldo em aberto: '+moeda(saldo)+'.*\n':'',vencimento:dBR(f.vencimento),pix:cfg.empresa.pix,pix_copia:pixCopiaCola(cfg.empresa,saldo,'FECH'+f.numero)})+((cfg.msgFechamento||MSG_FECH).includes('{pix_copia}')||!cfg.empresa.pix||saldo<=0?'':'\n\nPIX copia e cola ('+moeda(saldo)+'):\n'+pixCopiaCola(cfg.empresa,saldo,'FECH'+f.numero))}
+
+/* ---- fechamentos automáticos: períodos já encerrados com pedidos em aberto ---- */
+const PERIODICOS=['diario','semanal','quinzenal','mensal'];
+function periodoDe(dia,cond){if(cond==='diario')return[dia,dia];
+ if(cond==='semanal'){const d=new Date(dia+'T12:00:00Z');const w=(d.getUTCDay()+6)%7;const ini=addD(dia,-w);return[ini,addD(ini,6)]}
+ const y=+dia.slice(0,4),m=+dia.slice(5,7),dd=+dia.slice(8,10);const ult=new Date(Date.UTC(y,m,0)).getUTCDate();const mm=dia.slice(0,8);
+ if(cond==='quinzenal')return dd<=15?[mm+'01',mm+'15']:[mm+'16',mm+String(ult).padStart(2,'0')];
+ return[mm+'01',mm+String(ult).padStart(2,'0')]}
+function fechPendentes(clientes,pedidos,fechamentos,desde){const ativos=fechAtivos(fechamentos);const hoje=diaSP();const out={};
+ const cm=Object.fromEntries(clientes.filter(c=>PERIODICOS.includes(c.condicao)&&c.ativo!==false).map(c=>[c.id,c]));
+ for(const p of pedidos){const c=cm[p.clienteId];if(!c||p.cancelado||!(p.saldo>0.009)||ativos.has(p.id))continue;const [ini,fim]=periodoDe(p.dia,c.condicao);if(fim>=hoje||(desde&&fim<desde))continue;
+  const k=c.id+'|'+ini;const o=out[k]||(out[k]={cliente:c,inicio:ini,fim,pedidos:[]});o.pedidos.push(p)}
+ return Object.values(out).sort((a,b)=>a.fim.localeCompare(b.fim)||a.cliente.nome.localeCompare(b.cliente.nome))}
+async function proximoFech(db,fechamentos){const ref=db.doc('contadores/fechamentos');const maxLocal=Math.max(0,...fechamentos.map(f=>f.numero||0));
+ for(let t=0;t<6;t++){const r=await ref.acquire({holder:TAB,ttlMs:5000});if(r.acquired){const x=await ref.get();const n=Math.max(maxLocal,(x.exists&&x.data().ultimo)||0)+1;await ref.set({ultimo:n});return n}await espera(300+Math.random()*400)}
+ return maxLocal+1}
+async function gerarFechamento(db,{cliente,inicio,fim,pedidos:ps},fechamentos,cfg,me,auto){const n=await proximoFech(db,fechamentos);const prazo=Number(cfg.fechPrazo??3);
+ const id='fa-'+cliente.id+'-'+inicio;const ex=await db.doc('fechamentos/'+id).get();if(ex.exists&&ex.data().status!=='cancelado')return null;
+ const metros=sum(ps,p=>(p.totais?.mt||0)+(p.totais?.mu||0)),total=sum(ps,p=>p.saldo);
+ await db.doc('fechamentos/'+id).set({numero:n,clienteId:cliente.id,clienteNome:cliente.nome,periodicidade:cliente.condicao,inicio,fim,vencimento:addD(fim,prazo),criadoEm:new Date().toISOString(),por:me,status:'aberto',auto:!!auto,
+  pedidos:ps.sort((a,b)=>a.dia.localeCompare(b.dia)).map(p=>({id:p.id,numero:p.numero,data:p.dia,metros:r3((p.totais?.mt||0)+(p.totais?.mu||0)),valor:r2(p.saldo)})),metros:r3(metros),total:r2(total)});return n}
+const MSG_COBRANCA='Olá, {cliente}! Tudo bem?\n\nConsta em aberto na {empresa} o valor de *{saldo}* referente a {pedidos} pedido(s) (o mais antigo de {desde}).\n\nChave PIX: {pix}\n\nPIX copia e cola (valor já preenchido):\n{pix_copia}\n\nSe já pagou, por favor desconsidere e nos envie o comprovante. Obrigado!';
+function Cobranca({db,pedidos,clientes,cfg,pode,toast}){const [pix,setPix]=useState(null);const [min,setMin]=useState(0);const hoje=diaSP();
+ const lista=useMemo(()=>{const m={};for(const p of pedidos){if(p.cancelado||!(p.saldo>0.009))continue;const o=m[p.clienteId]||(m[p.clienteId]={id:p.clienteId,nome:p.clienteNome,q:0,s:0,desde:p.dia});o.q++;o.s+=p.saldo;if(p.dia<o.desde)o.desde=p.dia}
+  return Object.values(m).map(o=>({...o,cli:clientes.find(c=>c.id===o.id),dias:diasEntre(o.desde,hoje)-1})).filter(o=>o.dias>=min).sort((a,b)=>b.dias-a.dias||b.s-a.s)},[pedidos,clientes,min]);
+ const msg=o=>preencher(cfg.msgCobranca||MSG_COBRANCA,{cliente:(o.nome||'').split(' ')[0],empresa:cfg.empresa.nome,saldo:moeda(o.s),pedidos:o.q,desde:dBR(o.desde),pix:cfg.empresa.pix||'',pix_copia:pixCopiaCola(cfg.empresa,o.s,'COB'+String(o.id).slice(-8))});
+ const marcar=async o=>{try{await db.doc('clientes/'+o.id).update({ultimaCobranca:new Date().toISOString()})}catch(e){}};
+ return html`<div className="card"><div className="row pad between" style=${{borderBottom:'1px solid var(--line)'}}><div className="row"><span className="sm">Em aberto há pelo menos</span><select className="in" style=${{width:130}} value=${min} onChange=${e=>setMin(+e.target.value)}>${[0,3,7,15,30,60].map(d=>html`<option key=${d} value=${d}>${d} dias</option>`)}</select></div>
+   <b className="tab">${lista.length} clientes · ${moeda(sum(lista,o=>o.s))}</b></div>
+  ${lista.length===0?html`<${Empty} t="Ninguém devendo nesse prazo" s="Ótimo sinal."/>`:html`<div className="scroll"><table className="stack"><thead><tr><th>Cliente</th><th className="r">Pedidos</th><th>Mais antigo</th><th className="r">Dias</th><th className="r">Saldo</th><th>Última cobrança</th><th></th></tr></thead><tbody>
+  ${lista.map(o=>{const wa=waLink((o.cli||{}).whatsapp,msg(o));return html`<tr key=${o.id}><td><b>${o.nome}</b><div className="sm mut">${CONDICOES[(o.cli||{}).condicao]||''}</div></td><td className="r tab">${o.q}</td><td>${dBR(o.desde)}</td><td className="r tab b" style=${{color:o.dias>30?'var(--red2)':o.dias>7?'var(--warn)':''}}>${o.dias}</td><td className="r tab b">${moeda(o.s)}</td>
+   <td className="sm mut">${o.cli&&o.cli.ultimaCobranca?dhBR(o.cli.ultimaCobranca):'—'}</td>
+   <td className="r nw">${wa?html`<a className="btn sm p" href=${wa} target="_blank" rel="noreferrer" onClick=${()=>marcar(o)}><${Ic} n="wa" s=${14}/>Cobrar</a>`:html`<span className="sm mut">sem WhatsApp</span>`} ${cfg.empresa.pix&&html`<button className="btn sm" onClick=${()=>setPix(o)}>QR PIX</button>`}</td></tr>`})}</tbody></table></div>`}
+  ${pix&&html`<${PixDlg} cfg=${cfg} valor=${pix.s} txid=${'COB'+String(pix.id).slice(-8)} titulo=${'PIX — '+pix.nome} onClose=${()=>setPix(null)}/>`}</div>`}
+
+function Fechamentos(ctx){const {db,fechamentos,pedidos,clientes,cfg,pode,me,toast}=ctx;const [st,setSt]=useState('aberto');const [aba,setAba]=useState('lista');const [gerando,setGerando]=useState(false);
+ const desdeP=addD(diaSP(),-Number(cfg.fechAuto?.dias||45));const pend=useMemo(()=>fechPendentes(clientes,pedidos,fechamentos,desdeP),[clientes,pedidos,fechamentos,desdeP]);
+ const gerarTodos=async lista=>{setGerando(true);let n=0;try{for(const x of lista){if(await gerarFechamento(db,x,fechamentos,cfg,me,false))n++}toast(n+' fechamento(s) gerado(s)')}catch(e){toast('Erro: '+(e.message||e.code),1)}finally{setGerando(false)}};const [cq,setCq]=useState('');const [novo,setNovo]=useState(false);const [pagar,setPagar]=useState(null);const [lim,setLim]=useState(50);
  const pm=useMemo(()=>Object.fromEntries(pedidos.map(p=>[p.id,p])),[pedidos]);
  const saldoF=f=>sum(f.pedidos||[],x=>{const p=pm[x.id];return p?Math.max(0,p.saldo):0});
  const lista=fechamentos.filter(f=>(st==='todos'||f.status===st)&&(!cq||norm(f.clienteNome).includes(norm(cq)))).sort((a,b)=>(b.criadoEm||'').localeCompare(a.criadoEm||''));
@@ -1407,10 +3797,20 @@ function Fechamentos(ctx){const {db,fechamentos,pedidos,clientes,cfg,pode,me,toa
   '<div style="display:flex;justify-content:space-between;border-bottom:3px solid #a3089a;padding-bottom:10px"><div><img src="'+LOGO+'" alt="'+esc(E.nome)+'" style="height:56px;background:#000;border-radius:6px"><div>'+esc([E.endereco,E.whatsapp&&fone(E.whatsapp)].filter(Boolean).join(' · '))+'</div></div><div style="text-align:right"><h2 style="margin:0">FECHAMENTO #'+f.numero+'</h2>'+dBR(f.inicio)+' a '+dBR(f.fim)+'</div></div>'+
   '<p><b>Cliente:</b> '+esc(f.clienteNome)+(cli&&cli.doc?' · '+docFmt(cli.doc):'')+'</p><table><tr><th>Data</th><th>Pedido</th><th class="r">Metros</th><th class="r">Valor</th><th class="r">Saldo</th></tr>'+
   (f.pedidos||[]).map(x=>{const p=pm[x.id];return '<tr><td>'+dBR(x.data)+'</td><td>#'+x.numero+'</td><td class="r">'+num(x.metros)+'</td><td class="r">'+moeda(p?p.total:x.valor)+'</td><td class="r">'+moeda(p?p.saldo:x.valor)+'</td></tr>'}).join('')+
-  '<tr class="t"><td colspan="2">Total</td><td class="r">'+num(f.metros)+' m</td><td class="r">'+moeda(f.total)+'</td><td class="r">'+moeda(saldoF(f))+'</td></tr></table><p><b>Vencimento:</b> '+dBR(f.vencimento)+'</p>'+(E.pix?'<p><b>Chave PIX:</b> '+esc(E.pix)+'</p>':'')+'<p style="margin-top:40px;text-align:center;color:#666">'+esc(E.nome)+' — Impressão e Personalização</p></html>';
+  '<tr class="t"><td colspan="2">Total</td><td class="r">'+num(f.metros)+' m</td><td class="r">'+moeda(f.total)+'</td><td class="r">'+moeda(saldoF(f))+'</td></tr></table><p><b>Vencimento:</b> '+dBR(f.vencimento)+'</p>'+(E.pix?'<p><b>Chave PIX:</b> '+esc(E.pix)+'</p>':'')+
+  (E.pix&&saldoF(f)>0?(()=>{const cc=pixCopiaCola(E,saldoF(f),'FECH'+f.numero);return '<div style="display:flex;gap:16px;align-items:center;border:1px solid #ddd;border-radius:8px;padding:12px"><img src="'+qrUri(cc,150)+'" width="150" height="150"><div><b>Pague com PIX: '+moeda(saldoF(f))+'</b><div style="font-size:11px;word-break:break-all;margin-top:6px;color:#444">'+esc(cc)+'</div></div></div>'})():'')+'<p style="margin-top:40px;text-align:center;color:#666">'+esc(E.nome)+' — Impressão e Personalização</p></html>';
   try{await dl.save({filename:'fechamento-'+f.numero+'-'+(f.clienteNome||'').replace(/[^\w]+/g,'-').slice(0,30)+'.html',data:h})}catch(e){}};
  return html`<div><div className="row between" style=${{marginBottom:14}}><div><h1>Fechamentos</h1><div className="sub">${abertos.length} abertos · ${moeda(sum(abertos,saldoF))} a receber em fechamentos</div></div>${pode('pagar')&&html`<button className="btn p" onClick=${()=>setNovo(true)}><${Ic} n="plus"/>Gerar fechamento</button>`}</div>
-  <div className="card"><div className="row pad" style=${{borderBottom:'1px solid var(--line)'}}><input className="in" style=${{flex:'1 1 220px'}} placeholder="Cliente" value=${cq} onChange=${e=>setCq(e.target.value)}/>
+  <div className="tabs" style=${{marginBottom:12}}>${[['lista','Fechamentos'],['pendentes','Para fechar'+(pend.length?' ('+pend.length+')':'')],['cobranca','Cobrança']].map(([k,l])=>html`<button key=${k} className=${aba===k?'on':''} onClick=${()=>setAba(k)}>${l}</button>`)}</div>
+  ${aba==='cobranca'&&html`<${Cobranca} ...${ctx}/>`}
+  ${aba==='pendentes'&&html`<div className="card"><div className="row pad between" style=${{borderBottom:'1px solid var(--line)'}}><div className="sm mut">Períodos já encerrados (diário, semanal seg–dom, quinzenal 1–15/16–fim, mensal) com pedidos em aberto, dos últimos ${cfg.fechAuto?.dias||45} dias. Vencimento: fim do período + ${cfg.fechPrazo??3} dias.</div>
+    ${pode('pagar')&&pend.length>0&&html`<button className="btn p" disabled=${gerando} onClick=${()=>gerarTodos(pend)}>${gerando?'Gerando…':'Gerar todos ('+pend.length+')'}</button>`}</div>
+   ${pend.length===0?html`<${Empty} t="Nada para fechar" s="Todos os períodos encerrados já têm fechamento."/>`:html`<div className="scroll"><table><thead><tr><th>Cliente</th><th>Cobrança</th><th>Período</th><th className="r">Pedidos</th><th className="r">Metros</th><th className="r">Valor</th><th></th></tr></thead><tbody>
+    ${pend.map(x=>html`<tr key=${x.cliente.id+x.inicio}><td><b>${x.cliente.nome}</b></td><td className="sm">${CONDICOES[x.cliente.condicao]}</td><td className="sm nw">${dBR(x.inicio)} → ${dBR(x.fim)}</td><td className="r tab">${x.pedidos.length}</td><td className="r tab">${num(sum(x.pedidos,p=>(p.totais?.mt||0)+(p.totais?.mu||0)))}</td><td className="r tab b">${moeda(sum(x.pedidos,p=>p.saldo))}</td>
+     <td className="r">${pode('pagar')&&html`<button className="btn sm" disabled=${gerando} onClick=${()=>gerarTodos([x])}>Gerar</button>`}</td></tr>`)}</tbody></table></div>`}
+   <div className="pad row sm" style=${{borderTop:'1px solid var(--line)'}}><label className="row"><input type="checkbox" disabled=${!pode('pagar')} checked=${!!cfg.fechAuto?.ativo} onChange=${async e=>{try{const ref=db.doc('erp/config');const cur=await ref.get();await ref.set({...(cur.exists?cur.data():{}),fechAuto:{...(cfg.fechAuto||{}),ativo:e.target.checked,desde:e.target.checked?diaSP():(cfg.fechAuto||{}).desde||''}});toast(e.target.checked?'Fechamentos automáticos ligados':'Fechamentos automáticos desligados')}catch(x){toast('Somente o dono ou administradores podem mudar isso.',1)}}}/> <b>Gerar automaticamente</b></label>
+    <span className="mut">Quando ligado, ao abrir o sistema os períodos que encerrarem a partir de ${cfg.fechAuto?.desde?dBR(cfg.fechAuto.desde):'hoje'} viram fechamento sozinhos (você só revisa e envia).</span></div></div>`}
+  ${aba==='lista'&&html`<div className="card"><div className="row pad" style=${{borderBottom:'1px solid var(--line)'}}><input className="in" style=${{flex:'1 1 220px'}} placeholder="Cliente" value=${cq} onChange=${e=>setCq(e.target.value)}/>
    <div className="tabs" style=${{border:0}}>${[['aberto','Abertos'],['pago','Pagos'],['cancelado','Cancelados'],['todos','Todos']].map(([k,l])=>html`<button key=${k} className=${st===k?'on':''} onClick=${()=>setSt(k)}>${l}</button>`)}</div></div>
   ${lista.length===0?html`<${Empty} t="Nenhum fechamento" s="Gere um fechamento por cliente e período; os pedidos já fechados não entram de novo."/>`:html`<div className="scroll"><table><thead><tr><th>Nº</th><th>Cliente</th><th>Período</th><th className="r">Metros</th><th className="r">Total</th><th className="r">Saldo</th><th>Status</th><th></th></tr></thead><tbody>
    ${lista.slice(0,lim).map(f=>{const s=saldoF(f);const wa=waLink((clientes.find(c=>c.id===f.clienteId)||{}).whatsapp,textoFechamento(f,cfg,pm));return html`<tr key=${f.id}><td className="tab">#${f.numero}</td><td><b>${f.clienteNome}</b><div className="sm mut">${(f.pedidos||[]).length} pedidos · venc. ${dBR(f.vencimento)}</div></td><td className="sm nw">${dBR(f.inicio)} → ${dBR(f.fim)}</td>
@@ -1419,7 +3819,7 @@ function Fechamentos(ctx){const {db,fechamentos,pedidos,clientes,cfg,pode,me,toa
     <td className="r nw">${f.status==='aberto'&&pode('pagar')&&html`<button className="btn sm p" onClick=${()=>setPagar(f)}>Marcar pago</button> `}${f.status==='pago'&&pode('pagar')&&html`<button className="btn sm" onClick=${()=>reverter(f)}>Reverter</button> `}
      <button className="btn sm" onClick=${()=>demonstrativo(f)} title="Baixar demonstrativo"><${Ic} n="dl" s=${14}/></button> ${wa&&html`<a className="btn sm" href=${wa} target="_blank" rel="noreferrer" title="Enviar no WhatsApp"><${Ic} n="wa" s=${14}/></a>`}
      ${f.status==='aberto'&&pode('pagar')&&html` <button className="btn sm d" title="Cancelar fechamento" onClick=${()=>cancelar(f)}><${Ic} n="x" s=${14}/></button>`}</td></tr>`})}
-  </tbody></table></div>${lista.length>lim&&html`<div className="pad" style=${{textAlign:'center'}}><button className="btn" onClick=${()=>setLim(lim+50)}>Mostrar mais</button></div>`}`}</div>
+  </tbody></table></div>${lista.length>lim&&html`<div className="pad" style=${{textAlign:'center'}}><button className="btn" onClick=${()=>setLim(lim+50)}>Mostrar mais</button></div>`}`}</div>`}
   ${novo&&html`<${NovoFechamento} ...${ctx} pm=${pm} onClose=${()=>setNovo(false)}/>`}
   ${pagar&&html`<${Modal} title=${'Marcar fechamento #'+pagar.numero+' como pago'} sub=${pagar.clienteNome+' · saldo '+moeda(saldoF(pagar))} onClose=${()=>setPagar(null)}><${PagarFech} onOk=${(fo,d)=>{marcarPago(pagar,fo,d);setPagar(null)}}/><//>`}</div>`}
 function PagarFech({onOk}){const [f,setF]=useState('pix');const [d,setD]=useState(diaSP());return html`<div className="grid g2"><${F} l="Forma"><select className="in" value=${f} onChange=${e=>setF(e.target.value)}>${Object.entries(FORMAS).map(([k,v])=>html`<option key=${k} value=${k}>${v}</option>`)}</select><//><${F} l="Data do pagamento"><input type="date" className="in" value=${d} onChange=${e=>setD(e.target.value)}/><//></div>
@@ -1432,7 +3832,7 @@ function NovoFechamento({db,clientes,pedidos,fechamentos,cfg,me,toast,onClose,pm
  const marcados=eleg.filter(p=>sel?sel.includes(p.id):true);const metros=sum(marcados,p=>(p.totais?.mt||0)+(p.totais?.mu||0)),total=sum(marcados,p=>p.saldo);
  const cliOpts=clientes.filter(c=>c.ativo!==false).sort((a,b)=>a.nome.localeCompare(b.nome));
  const gerar=async()=>{if(!marcados.length)return toast('Nenhum pedido selecionado',1);setS(true);
-  try{const n=Math.max(0,...fechamentos.map(f=>f.numero||0))+1;const id='f'+uid();
+  try{const n=await proximoFech(db,fechamentos);const id='f'+uid();
    await db.doc('fechamentos/'+id).set({numero:n,clienteId:cid,clienteNome:cli.nome,periodicidade:cli.condicao,inicio:ini,fim,vencimento:venc,criadoEm:new Date().toISOString(),por:me,status:'aberto',
     pedidos:marcados.map(p=>({id:p.id,numero:p.numero,data:p.dia,metros:r3((p.totais?.mt||0)+(p.totais?.mu||0)),valor:r2(p.saldo)})),metros:r3(metros),total:r2(total)});
    toast('Fechamento #'+n+' gerado');onClose()}catch(e){toast('Erro: '+(e.message||e.code),1)}finally{setS(false)}};
@@ -1545,7 +3945,7 @@ function ImportarScalle({db,cfg,produtos,clientes,pedidos,maquinas,insumos,toast
 
 function Config(ctx){const {db,cfg,owner,papel,toast}=ctx;
  const [c,setC]=useState(cfg);const [aba,setAba]=useState('empresa');const admin=owner||papel==='admin';useEffect(()=>setC(cfg),[cfg]);
- const salvar=async()=>{try{const ref=db.doc('erp/config');const cur=await ref.get();await ref.set({...(cur.exists?cur.data():{}),empresa:c.empresa,etapas:c.etapas,categorias:c.categorias,modelos:c.modelos,meta:pn(c.meta),msgFechamento:c.msgFechamento||MSG_FECH,frete:{...FRETE_PADRAO,...(c.frete||{})},baixaPedido:{...BAIXA_PADRAO,...(c.baixaPedido||{})}});toast('Configurações salvas')}catch(e){toast('Somente o dono do sistema ou editores podem alterar as configurações.',1)}};
+ const salvar=async()=>{try{const ref=db.doc('erp/config');const cur=await ref.get();await ref.set({...(cur.exists?cur.data():{}),empresa:c.empresa,etapas:c.etapas,categorias:c.categorias,modelos:c.modelos,meta:pn(c.meta),msgFechamento:c.msgFechamento||MSG_FECH,msgCobranca:c.msgCobranca||MSG_COBRANCA,fechPrazo:pn(c.fechPrazo??3),frete:{...FRETE_PADRAO,...(c.frete||{})},baixaPedido:{...BAIXA_PADRAO,...(c.baixaPedido||{})}});toast('Configurações salvas')}catch(e){toast('Somente o dono do sistema ou editores podem alterar as configurações.',1)}};
  const E=k=>e=>setC({...c,empresa:{...c.empresa,[k]:e.target.value}});const upE=(i,k,v)=>setC({...c,etapas:c.etapas.map((x,j)=>j===i?{...x,[k]:v}:x)});
  const mov=(i,d)=>{const a=[...c.etapas];const j=i+d;if(j<0||j>=a.length)return;[a[i],a[j]]=[a[j],a[i]];setC({...c,etapas:a})};
  return html`<div><div className="row between" style=${{marginBottom:14}}><div><h1>Configurações</h1><div className="sub">Identidade, etapas do Kanban, categorias e mensagens</div></div>${admin&&html`<button className="btn p" onClick=${salvar}>Salvar configurações</button>`}</div>
@@ -1553,7 +3953,10 @@ function Config(ctx){const {db,cfg,owner,papel,toast}=ctx;
   <fieldset disabled=${!admin} style=${{border:0,padding:0,margin:0}}>
   ${aba==='empresa'&&html`<div className="card pad grid g3"><${F} l="Nome da empresa"><input className="in" value=${c.empresa.nome} onChange=${E('nome')}/><//><${F} l="CNPJ"><input className="in" value=${c.empresa.cnpj} onChange=${E('cnpj')}/><//>
    <${F} l="WhatsApp"><input className="in" value=${c.empresa.whatsapp} onChange=${E('whatsapp')}/><//><${F} l="Endereço"><input className="in" value=${c.empresa.endereco} onChange=${E('endereco')}/><//>
-   <${F} l="Chave PIX" hint="Usada em cobranças e comprovantes"><input className="in" value=${c.empresa.pix} onChange=${E('pix')}/><//><${F} l="Horário de funcionamento"><input className="in" value=${c.empresa.horario} onChange=${E('horario')} placeholder="Seg a Sex, 8h às 18h"/><//>
+   <${F} l="Chave PIX" hint="Usada em cobranças, QR Code e comprovantes"><input className="in" value=${c.empresa.pix} onChange=${E('pix')}/><//>
+   <${F} l="Tipo da chave PIX"><select className="in" value=${c.empresa.pixTipo||''} onChange=${E('pixTipo')}><option value="">Detectar automaticamente</option><option value="email">E-mail</option><option value="cpf">CPF</option><option value="cnpj">CNPJ</option><option value="telefone">Telefone</option><option value="aleatoria">Chave aleatória</option></select><//>
+   <${F} l="Nome do recebedor PIX" hint="Como aparece no banco do cliente"><input className="in" value=${c.empresa.pixNome||''} onChange=${E('pixNome')} placeholder=${c.empresa.nome}/><//>
+   <${F} l="Cidade do recebedor PIX"><input className="in" value=${c.empresa.pixCidade||''} onChange=${E('pixCidade')} placeholder="Franca"/><//><${F} l="Horário de funcionamento"><input className="in" value=${c.empresa.horario} onChange=${E('horario')} placeholder="Seg a Sex, 8h às 18h"/><//>
    <${F} l="Meta de faturamento mensal (R$)" hint="Aparece no Dashboard com a projeção do mês"><input className="in tab" value=${c.meta??''} onChange=${e=>setC({...c,meta:e.target.value})}/><//></div>
    <div className="card pad" style=${{marginTop:12,display:'grid',gap:10}}><b>Baixa de matéria-prima pelos pedidos</b>
     <label className="row sm"><input type="checkbox" checked=${!!(c.baixaPedido||BAIXA_PADRAO).ativo} onChange=${e=>setC({...c,baixaPedido:{...BAIXA_PADRAO,...(c.baixaPedido||{}),ativo:e.target.checked,desde:e.target.checked&&!(c.baixaPedido||BAIXA_PADRAO).ativo?new Date().toISOString():(c.baixaPedido||BAIXA_PADRAO).desde}})}/> Abater o estoque automaticamente quando a produção do pedido for concluída (pronto ou entregue)</label>
@@ -1578,7 +3981,10 @@ function Config(ctx){const {db,cfg,owner,papel,toast}=ctx;
     <td><select className="in" value=${x.setor||''} onChange=${e=>setC({...c,categorias:c.categorias.map((y,j)=>j===i?{...y,setor:e.target.value}:y)})}><option value="">Nenhum</option>${Object.entries(SETORES).map(([k,v])=>html`<option key=${k} value=${k}>${v}</option>`)}</select></td></tr>`)}
    </tbody></table></div><div className="pad"><button className="btn" onClick=${()=>setC({...c,categorias:[...c.categorias,{id:'cat'+uid(),nome:'Nova categoria',grupo:'outros',setor:''}]})}><${Ic} n="plus" s=${14}/>Nova categoria</button></div></div>`}
   ${aba==='modelos'&&html`<div style=${{display:'grid',gap:10}}><div className="sm mut">Variáveis: {cliente} {pedido} {itens} {valor} {saldo} {status} {pix} {horario}. Use *texto* para negrito.</div>
-   <div className="card pad" style=${{display:'grid',gap:8}}><b>Mensagem de fechamento</b><div className="sm mut">Variáveis: {periodicidade} {empresa} {cliente} {inicio} {fim} {linhas} {metros} {valor} {saldo_linha} {vencimento} {pix}</div>
+   <div className="card pad" style=${{display:'grid',gap:8}}><b>Mensagem de cobrança</b><div className="sm mut">Variáveis: {cliente} {empresa} {saldo} {pedidos} {desde} {pix} {pix_copia}</div>
+    <textarea className="in" style=${{minHeight:140,fontFamily:'Geist Mono,monospace',fontSize:13}} value=${c.msgCobranca||MSG_COBRANCA} onChange=${e=>setC({...c,msgCobranca:e.target.value})}></textarea></div>
+   <div className="card pad" style=${{display:'grid',gap:8}}><b>Mensagem de fechamento</b><div className="sm mut">Variáveis: {periodicidade} {empresa} {cliente} {inicio} {fim} {linhas} {metros} {valor} {saldo_linha} {vencimento} {pix} {pix_copia}</div>
+    <${F} l="Prazo de vencimento do fechamento (dias após o fim do período)"><input className="in tab" style=${{maxWidth:120}} value=${c.fechPrazo??3} onChange=${e=>setC({...c,fechPrazo:e.target.value})}/><//>
     <textarea className="in" style=${{minHeight:160,fontFamily:'Geist Mono,monospace',fontSize:13}} value=${c.msgFechamento||MSG_FECH} onChange=${e=>setC({...c,msgFechamento:e.target.value})}></textarea></div>
    ${c.modelos.map((m,i)=>html`<div key=${m.id} className="card pad" style=${{display:'grid',gap:8}}><input className="in b" value=${m.nome} onChange=${e=>setC({...c,modelos:c.modelos.map((y,j)=>j===i?{...y,nome:e.target.value}:y)})}/>
     <textarea className="in" style=${{minHeight:110,fontFamily:'Geist Mono,monospace',fontSize:13}} value=${m.texto} onChange=${e=>setC({...c,modelos:c.modelos.map((y,j)=>j===i?{...y,texto:e.target.value}:y)})}></textarea></div>`)}
