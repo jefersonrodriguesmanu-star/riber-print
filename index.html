@@ -27,7 +27,7 @@ button,input,select,textarea{font:inherit;color:inherit}
 .side{width:236px;flex:none;background:var(--side);color:#e4e4e7;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;transition:width .18s}
 .side.min{width:64px}.side .brand{display:flex;align-items:center;gap:10px;padding:16px 14px;border-bottom:1px solid #1f1f23}
 .logo{width:34px;height:34px;border-radius:9px;background:#000 center/cover no-repeat;display:grid;place-items:center;font-weight:800;font-size:12px;letter-spacing:-.5px;color:#fff;flex:none}
-.side nav{padding:10px 8px;overflow-y:auto;flex:1}.grp{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:#71717a;padding:12px 10px 4px}
+.side nav{padding:10px 8px;overflow-y:auto;flex:1;min-height:0}.grp{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:#71717a;padding:12px 10px 4px}
 .nv{display:flex;align-items:center;gap:10px;width:100%;border:0;background:none;color:#a1a1aa;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:14px;text-align:left;min-height:38px}
 .nv:hover{background:#18181b;color:#fff}.nv.on{background:#1c1c20;color:#fff}.nv.on svg{color:#e35fd5}.nv.on{box-shadow:inset 3px 0 0 #d23fc2}.nv svg{width:18px;height:18px;flex:none}
 .side.min .lbl,.side.min .grp{display:none}.side.min .nv{justify-content:center}
@@ -2910,7 +2910,7 @@ function PedidoForm({db,pedido,clienteId,clientes,produtos,pedidos,cfg,me,pode,t
  const cli=clientes.find(c=>c.id===cliId);const prodM=Object.fromEntries(produtos.map(p=>[p.id,p]));const cat=Object.fromEntries(cfg.categorias.map(c=>[c.id,c]));
  const res=useMemo(()=>reservas(pedidos,pedido?.id),[pedidos,pedido]);
  const auto=(it,c=cli)=>{const p=prodM[it.produtoId];if(!p||it.manual)return it;const q=somaQtd(it.qtd)||1;const r=precoPara(p,c,q,it.varianteId);
-  return{...it,preco:String(r.preco),desconto:String(r.desc>0?r2(r.preco*q*r.desc/100):0),origem:r.origem+(r.desc>0?' · −'+r.desc+'%':'')}};
+  return{...it,preco:String(r.preco).replace('.',','),desconto:String(r.desc>0?r2(r.preco*q*r.desc/100):0).replace('.',','),origem:r.origem+(r.desc>0?' · −'+r.desc+'%':'')}};
  useEffect(()=>{setIts(a=>a.map(i=>auto(i)))},[cliId]);
  const up=(id,patch,reprice)=>setIts(a=>a.map(i=>{if(i.id!==id)return i;const n={...i,...patch};return reprice?auto(n):n}));
  const calc=its.map(i=>{const p=prodM[i.produtoId];const c=p&&cat[p.categoria];const v=p&&(p.variantes||[]).find(x=>x.id===i.varianteId);
