@@ -991,12 +991,14 @@ function consumoPedido(p,maquinas,insumos,cfgB){const B={...BAIXA_PADRAO,...(cfg
  for(const [tipo,met] of [['textil',p.totais?.mt||0],['uv',p.totais?.mu||0]]){if(!(met>0))continue;const pf=pfp&&(mp.tipo||'textil')===tipo?pfp:perfilBaixa(tipo,maquinas,B);
   for(const f of (pf&&pf.ficha)||[]){const ins=insumos.find(i=>i.id===f.insumoId);if(!ins||!grupoOk(tipo,ins.grupo))continue;out[f.insumoId]=r3((out[f.insumoId]||0)+pn(f.qtd)*met)}}
  return out}
-async function aplicarConsumoPedido(db,p,ctx){const des=consumoPedido(p,ctx.maquinas,ctx.insumos,ctx.cfgB);const lanc={...(p.consumoLancado||{})};let mudou=false;
+/* O que já foi impresso não volta ao estoque (o material impresso é descartado): só abate a mais, nunca devolve. */
+function alvoPedido(p,ctx){const des=consumoPedido(p,ctx.maquinas,ctx.insumos,ctx.cfgB);const l=p.consumoLancado||{};const out={...l};for(const [k,v] of Object.entries(des))out[k]=Math.max(Number(l[k]||0),v);return out}
+async function aplicarConsumoPedido(db,p,ctx){const des=alvoPedido(p,ctx);const lanc={...(p.consumoLancado||{})};let mudou=false;
  for(const id of new Set([...Object.keys(des),...Object.keys(lanc)])){const antes=Number(lanc[id]||0),alvo=Number(des[id]||0);const dif=r3(alvo-antes);if(dif===0)continue;
   await movimentarInsumo(db,id,-dif,{tipo:dif>0?'consumo':'estorno',ref:'Pedido #'+p.numero,lid:'ped:'+p.id+':'+id+':'+antes+'>'+alvo,por:ctx.me});
   if(alvo)lanc[id]=alvo;else delete lanc[id];mudou=true;await db.doc('pedidos/'+p.id).update({consumoLancado:lanc})}
  return mudou}
-const precisaBaixa=(p,ctx)=>{const des=consumoPedido(p,ctx.maquinas,ctx.insumos,ctx.cfgB);const l=p.consumoLancado||{};for(const k of new Set([...Object.keys(des),...Object.keys(l)]))if(r3(Number(des[k]||0)-Number(l[k]||0))!==0)return true;return false};
+const precisaBaixa=(p,ctx)=>{const des=alvoPedido(p,ctx);const l=p.consumoLancado||{};for(const k of new Set([...Object.keys(des),...Object.keys(l)]))if(r3(Number(des[k]||0)-Number(l[k]||0))!==0)return true;return false};
 /* Movimenta um insumo com trava (lease) e chave de idempotência: o mesmo lançamento nunca é aplicado duas vezes. */
 async function movimentarInsumo(db,insId,delta,mov){const ref=db.doc('insumos/'+insId);
  for(let t=0;t<10;t++){const l=await ref.acquire({holder:TAB,ttlMs:6000});
@@ -1432,7 +1434,7 @@ function Config(ctx){const {db,cfg,owner,papel,toast}=ctx;
    <${F} l="Meta de faturamento mensal (R$)" hint="Aparece no Dashboard com a projeção do mês"><input className="in tab" value=${c.meta??''} onChange=${e=>setC({...c,meta:e.target.value})}/><//></div>
    <div className="card pad" style=${{marginTop:12,display:'grid',gap:10}}><b>Baixa de matéria-prima pelos pedidos</b>
     <label className="row sm"><input type="checkbox" checked=${!!(c.baixaPedido||BAIXA_PADRAO).ativo} onChange=${e=>setC({...c,baixaPedido:{...BAIXA_PADRAO,...(c.baixaPedido||{}),ativo:e.target.checked,desde:e.target.checked&&!(c.baixaPedido||BAIXA_PADRAO).ativo?new Date().toISOString():(c.baixaPedido||BAIXA_PADRAO).desde}})}/> Abater o estoque automaticamente quando a produção do pedido for concluída (pronto ou entregue)</label>
-    <div className="sm mut">Usa a ficha de consumo do perfil escolhido × metros do pedido. Se o pedido voltar etapa ou for cancelado, o estoque é devolvido. Vale para pedidos criados a partir de ${dhBR((c.baixaPedido||BAIXA_PADRAO).desde)}. Com isso ligado, a Central de impressão abate só os metros descartados.</div>
+    <div className="sm mut">Usa a ficha de consumo do perfil escolhido × metros do pedido. O que já foi abatido não volta ao estoque, mesmo se o pedido voltar etapa ou for cancelado (o material impresso é descartado). Se os metros do pedido aumentarem depois, abate a diferença. Vale para pedidos criados a partir de ${dhBR((c.baixaPedido||BAIXA_PADRAO).desde)}. Com isso ligado, a Central de impressão abate só os metros descartados.</div>
     <div className="grid g2">${[['textil','Perfil para DTF Têxtil'],['uv','Perfil para DTF UV']].map(([k,l])=>html`<${F} key=${k} l=${l}><select className="in" value=${(c.baixaPedido||{})[k]||''} onChange=${e=>setC({...c,baixaPedido:{...BAIXA_PADRAO,...(c.baixaPedido||{}),[k]:e.target.value}})}><option value="">Automático (primeira máquina ${k==='uv'?'UV':'têxtil'})</option>
      ${(ctx.maquinas||[]).filter(m=>(m.tipo||'textil')===k).flatMap(m=>(m.perfis||[]).map(pf=>html`<option key=${m.id+pf.id} value=${m.id+'|'+pf.id}>${m.nome} · ${pf.nome}</option>`))}</select><//>`)}</div></div>
    <div className="card pad" style=${{marginTop:12,display:'grid',gap:10}}><b>Frete (Melhor Envio)</b><div className="sm mut">Usado no botão “Cotar frete” dos pedidos com entrega. O peso do pacote é calculado: peso base + metros × peso por metro + peças × peso por peça (dá para ajustar na hora da cotação).</div>
