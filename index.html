@@ -3849,6 +3849,25 @@ function montarRolo(grupos,W,esp,modo,girar=true){const todos=[];for(const g of 
  if(modo==='pedido'&&grupos.length>1){const pecas=[],blocos=[];let y0=0;for(const g of grupos){if(!g.est.length)continue;const r=encaixar(g.est.map(e=>({w:e.larg,h:e.alt,qtd:e.qtd,girar,ref:e})),W,esp,0);if(r.erro)return{erro:'A estampa "'+r.erro.ref?.arquivo+'" não cabe na largura do rolo.'};
    for(const p of r.pecas)pecas.push({...p,y:p.y+y0});blocos.push({y:y0,h:r.comp,nome:g.nome});y0+=r.comp+esp}return{pecas,comp:Math.max(0,y0-esp),cortes:blocos.slice(1).map(b=>b.y-esp/2),blocos}}
  const r=encaixar(todos.map(e=>({w:e.larg,h:e.alt,qtd:e.qtd,girar,ref:e})),W,esp,0);if(r.erro)return{erro:'A estampa "'+r.erro.ref?.arquivo+'" não cabe na largura do rolo.'};return{pecas:r.pecas,comp:r.comp,cortes:[],blocos:[]}}
+
+/* otimizador "compactado": MaxRects (aproveita buracos) + várias ordens + busca aleatória com tempo limite */
+function maxRectsRolo(items,W,esp,girar){const BW=W+esp,E=1e-9;let free=[{x:0,y:0,w:BW,h:1e7}];const out=[];let top=0;
+ for(const it of items){let best=null;const oris=girar&&Math.abs(it.w-it.h)>E?[[it.w,it.h,false],[it.h,it.w,true]]:[[it.w,it.h,false]];
+  for(const [w0,h0,rot] of oris){const w=w0+esp,h=h0+esp;if(w>BW+E)continue;
+   for(const f of free){if(w<=f.w+E&&h<=f.h+E){const s1=f.y+h,s2=f.x,s3=Math.min(f.w-w,f.h-h);if(!best||s1<best.s1-E||(Math.abs(s1-best.s1)<=E&&(s2<best.s2-E||(Math.abs(s2-best.s2)<=E&&s3<best.s3))))best={x:f.x,y:f.y,w,h,w0,h0,rot,s1,s2,s3}}}}
+  if(!best)return null;out.push({x:best.x,y:best.y,w:best.w0,h:best.h0,rot:best.rot,ref:it.ref});if(best.y+best.h>top)top=best.y+best.h;
+  const nf=[];const bx=best.x,by=best.y,bw=best.w,bh=best.h;
+  for(const f of free){if(bx>=f.x+f.w-E||bx+bw<=f.x+E||by>=f.y+f.h-E||by+bh<=f.y+E){nf.push(f);continue}
+   if(bx>f.x+E)nf.push({x:f.x,y:f.y,w:bx-f.x,h:f.h});if(bx+bw<f.x+f.w-E)nf.push({x:bx+bw,y:f.y,w:f.x+f.w-bx-bw,h:f.h});
+   if(by>f.y+E)nf.push({x:f.x,y:f.y,w:f.w,h:by-f.y});if(by+bh<f.y+f.h-E)nf.push({x:f.x,y:by+bh,w:f.w,h:f.y+f.h-by-bh})}
+  free=[];for(let i=0;i<nf.length;i++){const a=nf[i];let dentro=false;for(let j=0;j<nf.length;j++){if(i===j)continue;const b=nf[j];if(b.x<=a.x+E&&b.y<=a.y+E&&b.x+b.w>=a.x+a.w-E&&b.y+b.h>=a.y+a.h-E){if(b.x===a.x&&b.y===a.y&&b.w===a.w&&b.h===a.h&&j>i)continue;dentro=true;break}}if(!dentro)free.push(a)}}
+ return{pecas:out,comp:Math.max(0,top-esp)}}
+function criarOtimizador(itens,W,esp,girar){let best=null,bestOrd=null,iter=0;const area=itens.reduce((t,i)=>t+(i.w+esp)*(i.h+esp),0);const lb=Math.max(area/(W+esp)-esp,...itens.map(i=>girar?Math.min(i.w,i.h):i.h));
+ const av=o=>{const r=maxRectsRolo(o,W,esp,girar);iter++;if(r&&(!best||r.comp<best.comp-1e-9)){best=r;bestOrd=o;return true}return false};
+ const ords=[(a,b)=>b.w*b.h-a.w*a.h,(a,b)=>Math.max(b.w,b.h)-Math.max(a.w,a.h),(a,b)=>b.h-a.h||b.w-a.w,(a,b)=>b.w-a.w||b.h-a.h,(a,b)=>(b.w+b.h)-(a.w+a.h),(a,b)=>Math.min(b.w,b.h)-Math.min(a.w,a.h)];const fila=ords.map(f=>[...itens].sort(f));
+ return{get best(){return best},get iter(){return iter},lb,passo(ms){const t0=performance.now();while(performance.now()-t0<ms){if(fila.length){av(fila.shift());continue}if(!bestOrd||bestOrd.length<2)return false;if(best.comp<=lb+0.3)return false;
+   const o=[...bestOrd],n=o.length,r=Math.random();let i=Math.random()*n|0,j=Math.random()*n|0;if(i===j)continue;
+   if(r<0.45)[o[i],o[j]]=[o[j],o[i]];else if(r<0.8){const [x]=o.splice(i,1);o.splice(j,0,x)}else{if(i>j)[i,j]=[j,i];const seg=o.slice(i,j+1).reverse();o.splice(i,seg.length,...seg)}av(o)}return true}}}
 function preencherVaos(pecas,comp,W,esp,f,girar=true){const R=0.5,C=Math.floor(W/R),L=Math.floor(comp/R);if(C<1||L<1||!(f.larg>0&&f.alt>0))return[];const occ=new Uint8Array(C*L);const rp=new Int32Array(L*(C+1));
  const faixa=(y,h)=>[Math.max(0,Math.floor((y-esp)/R)),Math.min(L,Math.ceil((y+h+esp)/R))];
  const mark=(x,y,w,h)=>{const c0=Math.max(0,Math.floor((x-esp)/R)),c1=Math.min(C,Math.ceil((x+w+esp)/R));const [r0,r1]=faixa(y,h);for(let r=r0;r<r1;r++)occ.fill(1,r*C+c0,r*C+c1)};
@@ -3880,14 +3899,25 @@ function EstampasSku(ctx){const {db,pode,toast,cfg,me,skumap=[],lotesSku=[],pedi
  const confirmarSug=async()=>{const lst=agreg.filter(a=>!a.mp&&a.sug);setS(true);try{await garantirVarios(lst.map(a=>a.sug.arq));const feitos={};for(const a of lst){const tipo=a.sug.tipo==='numero'?'numero':a.sug.tipo==='prefixo'?'prefixo':'exato';const sk=tipo==='numero'?a.sug.num:tipo==='prefixo'?a.sug.arq.base:a.sku;if(feitos[tipo+sk])continue;feitos[tipo+sk]=1;
    await salvarMapa({sku:sk,tipo,descricao:a.desc,estampas:[{arquivo:a.sug.arq.nome,caminho:a.sug.arq.caminho,larguraCm:a.sug.arq.larg,alturaCm:a.sug.arq.alt,qtd:1}]})}toast(Object.keys(feitos).length+' mapeamento(s) salvos. Da próxima vez já reconhece sozinho.')}finally{setS(false)}};
  const espU=espM===''?esp:Math.max(0,pn(espM));
- const mont=useMemo(()=>{const conta={};const blocoDe=(itens)=>{const m={};for(const it of itens){const mp=resolverSku(it.sku,skumap);if(!mp||mp.ignorar)continue;for(const e of mp.estampas||[]){if(!(e.larguraCm>0&&e.alturaCm>0))continue;const k=e.arquivo+'|'+e.larguraCm+'x'+e.alturaCm;
+ const montB=useMemo(()=>{const conta={};const blocoDe=(itens)=>{const m={};for(const it of itens){const mp=resolverSku(it.sku,skumap);if(!mp||mp.ignorar)continue;for(const e of mp.estampas||[]){if(!(e.larguraCm>0&&e.alturaCm>0))continue;const k=e.arquivo+'|'+e.larguraCm+'x'+e.alturaCm;
     const o=m[k]||(m[k]={arquivo:e.arquivo,caminho:e.caminho,larg:e.larguraCm,alt:e.alturaCm,qtd:0,skus:[]});o.qtd+=it.qtd*(e.qtd||1);if(!o.skus.includes(it.sku))o.skus.push(it.sku);
     const t=conta[k]||(conta[k]={arquivo:e.arquivo,caminho:e.caminho,larg:e.larguraCm,alt:e.alturaCm,qtd:0,skus:[]});t.qtd+=it.qtd*(e.qtd||1);if(!t.skus.includes(it.sku))t.skus.push(it.sku)}}return Object.values(m)};
    const grupos=modo==='pedido'?ativas.map(n=>({nome:n.pedido||(n.nota?'NF '+n.nota:n.chave.slice(-6)),est:blocoDe(n.itens)})).filter(g=>g.est.length):[{nome:'',est:blocoDe(ativas.flatMap(n=>n.itens))}];
    const est=Object.values(conta).sort((a,b)=>b.qtd-a.qtd);if(!est.length)return{est,metros:0,pecas:[],comp:0,cortes:[],blocos:[],nFill:0};
    const r=montarRolo(grupos,W,espU,modo,girar);if(r.erro)return{est,erro:r.erro,metros:0,pecas:[],cortes:[],blocos:[],nFill:0};
-   const fl=fill.on&&fill.arquivo&&pn(fill.larg)>0&&pn(fill.alt)>0?{arquivo:fill.arquivo,larg:pn(fill.larg),alt:pn(fill.alt)}:null;const extra=fl?preencherVaos(r.pecas,r.comp,W,espU,fl,girar):[];
-   const area=sum(est,e=>e.larg*e.alt*e.qtd)+extra.length*(fl?fl.larg*fl.alt:0);return{est,fl,nFill:extra.length,metros:Math.ceil(r.comp-1e-9)/100,comp:r.comp,pecas:[...r.pecas,...extra],cortes:r.cortes,blocos:r.blocos,aprov:r.comp?area/(W*r.comp)*100:0,giradas:r.pecas.filter(p=>p.rot).length}},[ativas,skumap,W,espU,modo,fill,girar]);
+   const itens=[];if(modo==='compacto')for(const e of est)for(let k=0;k<e.qtd;k++)itens.push({w:e.larg,h:e.alt,ref:e});
+   return{est,comp:r.comp,pecas:r.pecas,cortes:r.cortes,blocos:r.blocos,itens,sig:modo+'|'+girar+'|'+espU+'|'+W+'|'+est.map(e=>e.arquivo+':'+e.larg+'x'+e.alt+'x'+e.qtd).join(',')}},[ativas,skumap,W,espU,modo,girar]);
+ const [opt,setOpt]=useState(null);
+ useEffect(()=>{setOpt(null);if(modo!=='compacto'||!montB.itens?.length||montB.erro)return;const sig=montB.sig;const o=criarOtimizador(montB.itens,W,espU,girar);let vivo=true,n=0,id=null;
+  const loop=()=>{if(!vivo)return;const cont=o.passo(45);n++;const b=o.best;const melhor=b&&b.comp<montB.comp-1e-9;
+   if(cont&&n<45){if(melhor)setOpt({sig,pecas:b.pecas,comp:b.comp,rodando:true,iter:o.iter});else setOpt({sig,rodando:true,iter:o.iter});id=setTimeout(loop,0)}
+   else setOpt(melhor?{sig,pecas:b.pecas,comp:b.comp,rodando:false,iter:o.iter}:{sig,rodando:false,iter:o.iter})};
+  id=setTimeout(loop,60);return()=>{vivo=false;clearTimeout(id)}},[montB.sig]);
+ const mont=useMemo(()=>{const B=montB;if(!B.est.length||B.erro)return{...B,metros:0,nFill:0};const usaOpt=opt&&opt.sig===B.sig&&opt.pecas&&opt.comp<B.comp;const pecas=usaOpt?opt.pecas:B.pecas,comp=usaOpt?opt.comp:B.comp;
+   const fl=fill.on&&fill.arquivo&&pn(fill.larg)>0&&pn(fill.alt)>0?{arquivo:fill.arquivo,larg:pn(fill.larg),alt:pn(fill.alt)}:null;const extra=fl?preencherVaos(pecas,comp,W,espU,fl,girar):[];
+   const area=sum(B.est,e=>e.larg*e.alt*e.qtd)+extra.length*(fl?fl.larg*fl.alt:0);
+   return{...B,fl,nFill:extra.length,metros:Math.ceil(comp-1e-9)/100,comp,pecas:[...pecas,...extra],aprov:comp?area/(W*comp)*100:0,giradas:pecas.filter(p=>p.rot).length,otimizando:!!(opt&&opt.sig===B.sig&&opt.rodando),otimizado:usaOpt,ganho:usaOpt?B.comp-comp:0}},[montB,opt,fill,W,espU,girar]);
+
  const falta=agreg.filter(a=>!a.mp),semEst=agreg.filter(a=>a.mp&&!a.mp.ignorar&&!(a.mp.estampas||[]).length);
  const criarPedidoLoja=async(nLote)=>{if(!pode('criar'))throw new Error('sem permissão para criar pedidos');
    let cli=clientes.find(c=>c.lojaPropria)||clientes.find(c=>c.id==='c-loja-propria');const agora=new Date().toISOString();
@@ -3936,7 +3966,7 @@ function EstampasSku(ctx){const {db,pode,toast,cfg,me,skumap=[],lotesSku=[],pedi
       <td className="sm">${a.mp?(a.mp.ignorar?html`<span className="mut">sem estampa (ignorado)</span>`:(a.mp.estampas||[]).map((e,i)=>html`<div key=${i}><span style=${{color:'var(--ok)'}}>✓</span> ${e.arquivo} · ${num(e.larguraCm,1)}×${num(e.alturaCm,1)} cm${e.qtd>1?' · ×'+e.qtd+' por peça':''}${a.mp.tipo==='prefixo'?html` <span className="mut">(regra ${a.mp.sku}*)</span>`:a.mp.tipo==='numero'?html` <span className="mut">(nº ${a.mp.sku})</span>`:''}</div>`)):a.sug?html`<span style=${{color:'var(--warn)'}}>sugestão:</span> ${a.sug.arq.nome} · ${a.sug.arq.info?num(a.sug.arq.larg,1)+'×'+num(a.sug.arq.alt,1)+' cm':'lendo medida…'}`:html`<span style=${{color:'var(--red2)'}}>não vinculado</span>`}</td>
       <td className="r nw">${podeEd&&html`<button className="btn sm" onClick=${()=>setMapear(a.mp?{...a.mp}:{sku:numEst(a.sku)||(a.sug?.tipo==='prefixo'?a.sug.arq.base:a.sku),tipo:numEst(a.sku)?'numero':a.sug?.tipo==='prefixo'?'prefixo':'exato',descricao:a.desc,skuOrig:a.sku,estampas:a.sug?[{arquivo:a.sug.arq.nome,caminho:a.sug.arq.caminho,larguraCm:a.sug.arq.larg||'',alturaCm:a.sug.arq.alt||'',qtd:1}]:[]})}>${a.mp?'Editar':'Vincular'}</button>${a.mp&&html` <button className="btn sm" onClick=${()=>desvincular(a.mp)}>Desvincular</button>`}`}</td></tr>`)}</tbody></table></div></div>
    <div className="card pad"><div className="row between"><div><h2>Montagem para impressão</h2><div className="sm mut">Rolo de ${num(W,3)} cm · ${num(espU,1)} cm entre estampas${falta.length?html` · <b style=${{color:'var(--red2)'}}>${falta.length} SKU(s) ainda sem estampa não entram na conta</b>`:''}</div></div>
-     <div style=${{textAlign:'right'}}><div style=${{fontSize:34,fontWeight:800}} className="tab">${num(mont.metros)} m</div><div className="sm mut">${num(sum(mont.est,e=>e.qtd),0)} estampas${mont.nFill?' + '+mont.nFill+' de preenchimento':''}${mont.giradas?' · '+mont.giradas+' girada(s)':''} · aproveitamento ${pct(mont.aprov)}</div></div></div>
+     <div style=${{textAlign:'right'}}><div style=${{fontSize:34,fontWeight:800}} className="tab">${num(mont.metros)} m</div><div className="sm mut">${num(sum(mont.est,e=>e.qtd),0)} estampas${mont.nFill?' + '+mont.nFill+' de preenchimento':''}${mont.giradas?' · '+mont.giradas+' girada(s)':''} · aproveitamento ${pct(mont.aprov)}</div>${modo==='compacto'&&mont.est.length>0&&html`<div className="sm" style=${{color:mont.otimizando?'var(--warn)':'var(--ok)'}}>${mont.otimizando?'Otimizando encaixe…':mont.otimizado?'✓ Otimizado: '+num(mont.ganho,1)+' cm a menos':'✓ Melhor encaixe encontrado'}</div>`}</div></div>
     <div className="row" style=${{gap:12,marginTop:12,flexWrap:'wrap',alignItems:'flex-end'}}>
      <label className="sm">Modo de montagem<select className="in" style=${{width:250}} value=${modo} onChange=${e=>setModo(e.target.value)}><option value="compacto">Compactado (menor metragem)</option><option value="pedido">Compactado por pedido</option><option value="corte">Corte facilitado (estampas alinhadas)</option></select></label>
      <label className="sm">Distância entre estampas (cm)<input className="in tab" style=${{width:110}} inputMode="decimal" placeholder=${String(esp).replace('.',',')} value=${espM} onChange=${e=>setEspM(e.target.value)}/></label>
