@@ -2805,7 +2805,7 @@ function Busca({clientes,pedidos,produtos,abrir,setForm}){
 
 /* ---------------- dashboard ---------------- */
 function Dashboard({db,pedidos,clientes,cfg,pode,abrir,ir,impressoes=[],insumos=[],fechamentos=[],solicitacoes:ctxSol=[]}){
- const [per,setPer]=useState('30d');const [ci,setCi]=useState(intervalo('30d'));const [cmp,setCmp]=useState(true);
+ const [per,setPer]=useState(()=>{try{return localStorage.getItem('rp_dash_per')||'hoje'}catch(e){return 'hoje'}});useEffect(()=>{try{localStorage.setItem('rp_dash_per',per)}catch(e){}},[per]);const [ci,setCi]=useState(intervalo('7d'));const [cmp,setCmp]=useState(true);
  const [ini,fim]=per==='pers'?ci:intervalo(per);const n=diasEntre(ini,fim);const iniA=addD(ini,-n),fimA=addD(ini,-1);
  const k=(a,b)=>{const ps0=pedidos.filter(p=>p.dia>=a&&p.dia<=b);const lj=ps0.filter(p=>p.interno&&!p.cancelado);const ps=ps0.filter(p=>!p.interno);const at=ps.filter(p=>!p.cancelado);
   const pagos=at.flatMap(p=>(p.pagamentos||[]).filter(x=>!x.estornado&&diaSP(x.data)>=a&&diaSP(x.data)<=b));
@@ -2829,19 +2829,19 @@ function Dashboard({db,pedidos,clientes,cfg,pode,abrir,ir,impressoes=[],insumos=
  const lucro=A.fat-A.custo;
  return html`<div>
   <div className="row between" style=${{marginBottom:16,alignItems:'flex-end'}}>
-   <div><h1>${pode('fat')?moeda(A.fat)+' faturados':A.qtd+' pedidos'} no período</h1><div className="sub">${dBR(ini)} a ${dBR(fim)} · ${A.qtd} pedidos · ${num(A.mt+A.mu)} m de DTF vendidos</div></div>
-   <div className="row"><select className="in" style=${{width:190}} value=${per} onChange=${e=>setPer(e.target.value)}>${PERIODOS.map(([v,l])=>html`<option key=${v} value=${v}>${l}</option>`)}</select>
+   <div><h1>${pode('fat')?moeda(A.fat)+' faturados':A.qtd+' pedidos'} no período</h1><div className="sub">${ini===fim?dBR(ini):dBR(ini)+' a '+dBR(fim)} · ${A.qtd} pedidos · ${num(A.mt+A.mu+A.ljM)} m impressos${A.ljM?' (com loja própria)':''}</div></div>
+   <div className="row" style=${{flexWrap:'wrap',justifyContent:'flex-end'}}><div className="tabs" style=${{flexWrap:'wrap'}}>${[['hoje','Hoje'],['ontem','Ontem'],['7d','7 dias'],['15d','15 dias'],['30d','30 dias'],['mes','Este mês']].map(([v,l])=>html`<button key=${v} className=${per===v?'on':''} onClick=${()=>setPer(v)}>${l}</button>`)}</div><select className="in" style=${{width:170}} value=${per} onChange=${e=>setPer(e.target.value)}>${PERIODOS.map(([v,l])=>html`<option key=${v} value=${v}>${l}</option>`)}</select>
     ${per==='pers'&&html`<input type="date" className="in" style=${{width:160}} value=${ci[0]} onChange=${e=>setCi([e.target.value,ci[1]])}/><input type="date" className="in" style=${{width:160}} value=${ci[1]} onChange=${e=>setCi([ci[0],e.target.value])}/>`}
     <label className="row sm mut" style=${{gap:6}}><input type="checkbox" checked=${cmp} onChange=${e=>setCmp(e.target.checked)}/>Comparar com período anterior</label></div></div>
   <div className="grid g4" style=${{marginBottom:12}}>
-   ${pode('fat')?html`<${K} hero t="Faturamento líquido" v=${moeda(A.fat)} a=${A.fat} b=${B.fat} s=${'Bruto '+moeda(A.bruto)+' · descontos '+moeda(A.desc)}/>`:html`<${K} hero t="Pedidos" v=${A.qtd} a=${A.qtd} b=${B.qtd}/>`}
-   <${K} t="Pedidos" v=${A.qtd} a=${A.qtd} b=${B.qtd} s=${A.pagos+' pagos · '+A.pend+' pendentes · '+A.canc+' cancelados'}/>
+   ${pode('fat')?html`<${K} hero t="Faturamento" v=${moeda(A.fat)} a=${A.fat} b=${B.fat} s=${'Bruto '+moeda(A.bruto)+' · descontos '+moeda(A.desc)+' · sem a loja própria'}/>`:html`<${K} hero t="Pedidos" v=${A.qtd} a=${A.qtd} b=${B.qtd}/>`}
+   <${K} t="Metros impressos" v=${num(A.mt+A.mu+A.ljM)+' m'} a=${A.mt+A.mu+A.ljM} b=${B.mt+B.mu+B.ljM} s=${'Têxtil '+num(A.mt)+' · UV '+num(A.mu)+' · loja própria '+num(A.ljM)}/>
+   ${pode('custos')&&html`<${K} t="Custo de produção" v=${moeda(A.custo+A.ljC)} a=${A.custo+A.ljC} b=${B.custo+B.ljC} inv=${true} s=${'Vendas '+moeda(A.custo)+' · loja própria '+moeda(A.ljC)+((A.mt+A.mu+A.ljM)?' · '+moeda((A.custo+A.ljC)/(A.mt+A.mu+A.ljM||1))+'/m':'')}/>`}
+   ${pode('custos')?html`<${K} t="Lucro bruto estimado" v=${moeda(lucro)} a=${lucro} b=${B.fat-B.custo} s=${'Margem '+pct(A.fat?lucro/A.fat*100:null)+' · faturamento − custo das vendas'}/>`:html`<${K} t="Pedidos atrasados" v=${atrasados}/>`}
+   <${K} t="Pedidos" v=${A.qtd} a=${A.qtd} b=${B.qtd} s=${A.pagos+' pagos · '+A.pend+' pendentes · '+A.canc+' cancelados'+(A.lj.length?' · +'+A.lj.length+' loja própria':'')}/>
    ${pode('fat')&&html`<${K} t="Ticket médio" v=${moeda(A.qtd?A.fat/A.qtd:0)} a=${A.qtd?A.fat/A.qtd:0} b=${B.qtd?B.fat/B.qtd:0}/>`}
    ${pode('fat')&&html`<${K} t="Recebido no período" v=${moeda(A.rec)} a=${A.rec} b=${B.rec} s=${'A receber (geral): '+moeda(receber)}/>`}
-   <${K} t="DTF Têxtil vendido" v=${num(A.mt)+' m'} a=${A.mt} b=${B.mt}/>
-   <${K} t="DTF UV vendido" v=${num(A.mu)+' m'} a=${A.mu} b=${B.mu}/>
    <${K} t="Peças de vestuário" v=${num(A.pc,0)} a=${A.pc} b=${B.pc} s=${A.novos+' clientes novos'}/>
-   ${pode('custos')?html`<${K} t="Lucro bruto estimado" v=${moeda(lucro)} a=${lucro} b=${B.fat-B.custo} s=${'Margem '+pct(A.fat?lucro/A.fat*100:null)}/>`:html`<${K} t="Pedidos atrasados" v=${atrasados}/>`}
   </div>
   ${(()=>{const vT=A.mt+A.mu,vTb=B.mt+B.mu,tot=vT+A.ljM,totB=vTb+B.ljM;return html`<div className="card pad" style=${{marginBottom:12}}><div className="row between"><div><h2>Metros impressos no período</h2><div className="sm mut">Vendas para clientes + estampas da nossa loja (pedidos internos, sem venda)</div></div><div style=${{textAlign:'right'}}><div style=${{fontSize:30,fontWeight:800}} className="tab">${num(tot)} m</div>${D(tot,totB)}</div></div>
    <div className="hbar" style=${{height:12,marginTop:12,display:'flex',overflow:'hidden'}}><i style=${{width:(tot?A.mt/tot*100:0)+'%',background:'var(--red)',borderRadius:0}}></i><i style=${{width:(tot?A.mu/tot*100:0)+'%',background:'#f97316',borderRadius:0}}></i><i style=${{width:(tot?A.ljM/tot*100:0)+'%',background:'#2563eb',borderRadius:0}}></i></div>
