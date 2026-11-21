@@ -2895,9 +2895,21 @@ function Pedidos({pedidos,cfg,abrir,pode,setForm,toast}){
   const L=[['Pedido','Data','Cliente','Metros Têxtil','Metros UV','Peças','Total','Pago','Saldo','Financeiro','Produção']].concat(lista.map(p=>[p.numero,dBR(p.criadoEm),p.clienteNome,num(p.totais?.mt),num(p.totais?.mu),p.totais?.pecas,num(p.total),num(p.pago),num(p.saldo),FIN[p.statusFin][0],PROD[p.statusProd][0]]));
   const csv='﻿'+L.map(r=>r.map(c=>{const s=String(c??'');return/[;"\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}).join(';')).join('\r\n');
   try{await dl.save({filename:'pedidos.csv',data:csv})}catch(e){}};
+ const hj=diaSP();const atalhos=[['hoje','Hoje',hj,hj],['ontem','Ontem',addD(hj,-1),addD(hj,-1)],['7','7 dias',addD(hj,-6),hj],['15','15 dias',addD(hj,-14),hj],['30','30 dias',addD(hj,-29),hj],['mes','Este mês',hj.slice(0,8)+'01',hj]];
+ const atalhoAtivo=(atalhos.find(a=>a[2]===ini&&a[3]===fim)||[])[0]||(ini||fim?'custom':'todos');
+ const R=useMemo(()=>{const v=lista.filter(p=>!p.cancelado);const vend=v.filter(p=>!p.interno);const lj=v.filter(p=>p.interno);const m=p=>(p.totais?.mt||0)+(p.totais?.mu||0);
+  return{nl:lj.length,n:vend.length,canc:lista.filter(p=>p.cancelado).length,mt:sum(vend,p=>p.totais?.mt),mu:sum(vend,p=>p.totais?.mu),ml:sum(lj,m),pecas:sum(vend,p=>p.totais?.pecas),fat:sum(vend,p=>p.total),pago:sum(vend,p=>p.pago),saldo:sum(vend.filter(p=>!p.cortesia),p=>p.saldo),custo:sum(v,p=>p.totais?.custo),frete:sum(vend,p=>p.frete),prontos:v.filter(p=>['pronto','entregue'].includes(p.statusProd)).length}},[lista]);
+ const metrosTot=R.mt+R.mu+R.ml;
  return html`<div>
   <div className="row between" style=${{marginBottom:14}}><div><h1>Pedidos</h1><div className="sub">${lista.length} de ${pedidos.length} pedidos</div></div>
    <div className="row">${pode('exportar')&&html`<button className="btn" onClick=${exportar}><${Ic} n="dl"/>Exportar CSV</button>`}${pode('criar')&&html`<button className="btn p" onClick=${()=>setForm({t:'pedido'})}><${Ic} n="plus"/>Novo pedido</button>`}</div></div>
+  <div className="row" style=${{marginBottom:10,flexWrap:'wrap',gap:8,alignItems:'center'}}><div className="tabs" style=${{flexWrap:'wrap'}}><button className=${atalhoAtivo==='todos'?'on':''} onClick=${()=>{setIni('');setFim('')}}>Todos</button>${atalhos.map(([k,l,a,b])=>html`<button key=${k} className=${atalhoAtivo===k?'on':''} onClick=${()=>{setIni(a);setFim(b)}}>${l}</button>`)}<button className=${atalhoAtivo==='custom'?'on':''} onClick=${()=>{if(atalhoAtivo!=='custom'){setIni(addD(hj,-6));setFim(hj)}}}>Personalizado</button></div>
+   ${(ini||fim)&&html`<span className="sm mut">${ini&&fim?(ini===fim?dBR(ini):dBR(ini)+' a '+dBR(fim)):ini?'desde '+dBR(ini):'até '+dBR(fim)}</span>`}</div>
+  <div className="grid g4" style=${{marginBottom:12}}>
+   <div className="card kpi hero"><div className="t">Pedidos</div><div className="v tab">${num(R.n,0)}</div><div className="sm mut">${R.nl?'+ '+R.nl+' da loja própria · ':''}${R.prontos} pronto(s)/entregue(s)${R.canc?' · '+R.canc+' cancelado(s)':''}</div></div>
+   <div className="card kpi"><div className="t">Metros impressos</div><div className="v tab">${num(metrosTot)} m</div><div className="sm mut">Têxtil ${num(R.mt)} · UV ${num(R.mu)}${R.ml?' · loja própria '+num(R.ml):''}${R.pecas?' · '+num(R.pecas,0)+' peça(s)':''}</div></div>
+   ${pode('fat')?html`<div className="card kpi"><div className="t">Faturamento</div><div className="v tab">${moeda(R.fat)}</div><div className="sm mut">ticket médio ${moeda(R.n?R.fat/R.n:0)}${R.frete?' · frete '+moeda(R.frete):''}</div></div>
+   <div className="card kpi"><div className="t">Recebido</div><div className="v tab">${moeda(R.pago)}</div><div className="sm" style=${{color:R.saldo>0.009?'var(--red2)':'var(--ok)'}}>${R.saldo>0.009?'a receber '+moeda(R.saldo):'tudo recebido'}${pode('custos')&&R.custo?html` <span className="mut">· custo ${moeda(R.custo)}</span>`:''}</div></div>`:html`<div className="card kpi"><div className="t">Peças</div><div className="v tab">${num(R.pecas,0)}</div></div>`}</div>
   <div className="card">
    <div className="row pad" style=${{borderBottom:'1px solid var(--line)'}}>
     <input className="in" style=${{flex:'1 1 220px'}} placeholder="Nº do pedido ou cliente" value=${q} onChange=${e=>setQ(e.target.value)}/>
