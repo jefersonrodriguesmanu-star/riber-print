@@ -119,7 +119,7 @@ function render(){
    ${L.erro?`<div class="msg err">${esc(L.erro)}</div>`:''}</section>
   <section class="card"><div class="st"><b>2</b><h2>Seus dados</h2></div><div class="g2">
    <label class="f">Nome ou empresa *<input data-c="nome" value="${esc(C.nome)}" autocomplete="name"></label><label class="f">WhatsApp com DDD *<input data-c="whatsapp" value="${esc(C.whatsapp)}" inputmode="tel" autocomplete="tel" placeholder="(16) 99999-9999"></label>
-   <label class="f">CPF ou CNPJ <span class="hint">Cliente cadastrado? Informe para usar o seu preço.</span><input data-c="documento" value="${esc(C.documento)}" inputmode="numeric"></label><label class="f">E-mail<input data-c="email" value="${esc(C.email)}" type="email" autocomplete="email"></label></div>
+   <label class="f">CPF ou CNPJ<input data-c="documento" value="${esc(C.documento)}" inputmode="numeric"><span class="hint">Já é cliente? Informe para usar o seu preço.</span></label><label class="f">E-mail<input data-c="email" value="${esc(C.email)}" type="email" autocomplete="email"></label></div>
    <input id="site" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true"></section>
   <section class="card"><div class="st"><b>3</b><h2>Entrega</h2></div>
    <div class="seg"><button data-e="retirada" class="${S.entrega==='retirada'?'on':''}">Retirar na loja<small>Sem frete</small></button><button data-e="envio" class="${S.entrega==='envio'?'on':''}">Receber pelo correio ou transportadora<small>Cotação de frete na hora</small></button></div>
