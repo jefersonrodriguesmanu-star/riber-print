@@ -3134,8 +3134,11 @@ async function moverPedido({db,p,etapa,me,pode,produtos,toast,abrir}){
 
 function Kanban(ctx){
  const {pedidos,cfg,abrir,pode}=ctx;const [vis,setVis]=useState('geral');const [q,setQ]=useState('');const [over,setOver]=useState(null);const drag=useRef(null);
+ const [per,setPer]=useState(()=>{try{return localStorage.getItem('rp_kb_per')||'ativos'}catch(e){return 'ativos'}});const [de,setDe]=useState(addD(diaSP(),-6));const [ate,setAte]=useState(diaSP());
+ useEffect(()=>{try{localStorage.setItem('rp_kb_per',per)}catch(e){}},[per]);
+ const hoje=diaSP();const faixa=per==='hoje'?[hoje,hoje]:per==='ontem'?[addD(hoje,-1),addD(hoje,-1)]:per==='7'?[addD(hoje,-6),hoje]:per==='15'?[addD(hoje,-14),hoje]:per==='30'?[addD(hoje,-29),hoje]:per==='custom'?[de<=ate?de:ate,de<=ate?ate:de]:null;
  const limite=Date.now()-7*864e5;
- const ps=pedidos.filter(p=>(!(p.cancelado||p.statusProd==='entregue')||new Date(p.etapaDesde)>limite)&&(!q||String(p.numero).includes(q)||norm(p.clienteNome).includes(norm(q))));
+ const ps=pedidos.filter(p=>(faixa?(p.dia>=faixa[0]&&p.dia<=faixa[1]):(!(p.cancelado||p.statusProd==='entregue')||new Date(p.etapaDesde)>limite))&&(!q||String(p.numero).includes(q)||norm(p.clienteNome).includes(norm(q))));
  let cols,cards;
  if(vis==='geral'){cols=cfg.etapas;cards=ps.map(p=>({k:p.id,col:p.etapaId,p}))}
  else if(vis==='financeiro'){cols=[{id:'pendente',nome:'Pendente',cor:'#f59e0b'},{id:'parcial',nome:'Parcial',cor:'#3b82f6'},{id:'faturado',nome:'Faturado (a cobrar)',cor:'#8b5cf6'},{id:'pago',nome:'Pago',cor:'#16a34a'}];cards=ps.filter(p=>!p.cancelado).map(p=>({k:p.id,col:p.statusFin,p}))}
@@ -3151,6 +3154,10 @@ function Kanban(ctx){
  return html`<div>
   <div className="row between" style=${{marginBottom:12}}><div><h1>Kanban</h1><div className="sub">Arraste os cartões entre as colunas. Toda movimentação fica no histórico do pedido.</div></div>
    <input className="in" style=${{width:240}} placeholder="Nº ou cliente" value=${q} onChange=${e=>setQ(e.target.value)}/></div>
+  <div className="row" style=${{marginBottom:10,flexWrap:'wrap',gap:8,alignItems:'center'}}><span className="sm mut">Período:</span>
+   <div className="tabs" style=${{flexWrap:'wrap'}}>${[['ativos','Em andamento'],['hoje','Hoje'],['ontem','Ontem'],['7','7 dias'],['15','15 dias'],['30','30 dias'],['custom','Personalizado']].map(([k,l])=>html`<button key=${k} className=${per===k?'on':''} onClick=${()=>setPer(k)}>${l}</button>`)}</div>
+   ${per==='custom'&&html`<span className="row" style=${{gap:6}}><input className="in" type="date" style=${{width:150}} value=${de} onChange=${e=>setDe(e.target.value)}/><span className="sm mut">até</span><input className="in" type="date" style=${{width:150}} value=${ate} max=${hoje} onChange=${e=>setAte(e.target.value)}/></span>`}
+   <span className="sm mut">${ps.length} pedido(s)${faixa?' de '+dBR(faixa[0])+(faixa[1]!==faixa[0]?' a '+dBR(faixa[1]):''):' abertos (e entregues nos últimos 7 dias)'}</span></div>
   <div className="tabs" style=${{marginBottom:12}}>${VIS.map(([k,l])=>html`<button key=${k} className=${vis===k?'on':''} onClick=${()=>setVis(k)}>${l}</button>`)}</div>
   <div className="kb">${cols.map(c=>{const cs=cards.filter(x=>x.col===c.id);
    return html`<div key=${c.id} className=${'col'+(over===c.id?' over':'')} onDragOver=${e=>{e.preventDefault();over!==c.id&&setOver(c.id)}} onDragLeave=${()=>setOver(o=>o===c.id?null:o)} onDrop=${e=>{e.preventDefault();soltar(c.id,drag.current)}}>
