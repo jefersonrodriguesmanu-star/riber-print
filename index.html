@@ -3060,7 +3060,7 @@ function PedidoDetalhe({db,id,pedidos,clientes,produtos,cfg,me,pode,toast,onClos
    ${!p.cancelado&&pode('autorizar')&&!p.autorizado&&p.statusFin!=='pago'&&html`<button className="btn" onClick=${()=>salvar({...p,autorizado:true,historico:[...p.historico,{em:new Date().toISOString(),por:me,tipo:'autorizacao',obs:'Produção faturada autorizada'}]},'Produção autorizada')}>Autorizar produção</button>`}
    ${!p.cancelado&&pode('editar')&&html`<button className="btn" onClick=${()=>{onClose();setForm({t:'pedido',pedido:p})}}>Editar</button>`}
    ${pode('criar')&&html`<button className="btn" onClick=${duplicar}>Duplicar</button>`}
-   <button className="btn" onClick=${comprovante}><${Ic} n="dl" s=${15}/>Comprovante</button>
+   <button className="btn" onClick=${comprovante}><${Ic} n="dl" s=${15}/>Comprovante</button>${ONLINE()&&!p.cancelado&&html` <button className="btn" onClick=${()=>enviarAcomp({db,p,cfg,toast,whats})}>📍 Acompanhamento</button>`}
    ${ONLINE()&&(p.arquivos||[]).length>0&&html`<button className="btn" onClick=${()=>baixarTodas(p.arquivos,toast)}><${Ic} n="dl" s=${15}/>Baixar artes (${p.arquivos.length})</button>`}
    ${ONLINE()&&p.entrega&&p.entrega!=='retirada'&&!p.cancelado&&html`<button className="btn" onClick=${()=>abrir('etiqueta',p.id)}>${p.etiqueta&&p.etiqueta.url?'Etiqueta de envio':'Gerar etiqueta de envio'}</button>`}
    ${!p.cancelado&&pode('cancelar')&&html`<button className="btn d" onClick=${()=>setDlg('cancel')}>Cancelar</button>`}</div>
@@ -4211,6 +4211,15 @@ function Entregas(ctx){const {db,pedidos,clientes,cfg,me,pode,toast,produtos,abr
    <div className="row" style=${{justifyContent:'flex-end'}}><button className="btn" onClick=${()=>setConf(null)}>Voltar</button><button className="btn p" onClick=${()=>entregar(conf.p,conf.quem)}>Confirmar entrega</button></div></div><//>`}
  </div>`}
 
+
+/* ---------------- link de acompanhamento do pedido para o cliente ---------------- */
+const ACOMP_URL='https://riber-print.github.io/acompanhar.html';
+const novoTokAcomp=()=>{const a=new Uint8Array(16);crypto.getRandomValues(a);return Array.from(a,b=>b.toString(16).padStart(2,'0')).join('').slice(0,24)};
+const linkAcomp=p=>ACOMP_URL+'?p='+encodeURIComponent(p.id)+'&t='+p.acompToken;
+const msgAcomp=(p,cfg,link)=>'Olá'+(p.clienteNome?', '+p.clienteNome.split(' ')[0]:'')+'! 😊\n\nSeu pedido *#'+p.numero+'* na *'+(cfg.empresa?.nome||'RIBER PRINT')+'* está registrado.\n\n📍 *Acompanhe aqui o status do seu pedido em tempo real:*\n'+link+'\n\nPor ele você vê quando o pedido for aprovado, estiver imprimindo, ficar pronto'+(p.entrega==='retirada'?' e disponível para retirada':' e sair para entrega')+'.\n\nQualquer dúvida, é só chamar aqui no WhatsApp. Obrigado pela preferência! 🙌';
+async function enviarAcomp({db,p,cfg,toast,whats}){const w=window.open('about:blank','_blank');try{let tk=p.acompToken;if(!tk){tk=novoTokAcomp();await db.doc('pedidos/'+p.id).update({acompToken:tk})}const link=linkAcomp({...p,acompToken:tk});try{navigator.clipboard?.writeText(link)}catch(e){}
+ const n=waNum(whats||p.clienteWhats||'');const u='https://wa.me/'+(n||'')+'?text='+encodeURIComponent(msgAcomp(p,cfg,link));if(w)w.location=u;else location.href=u;toast('Link de acompanhamento copiado'+(n?' e aberto no WhatsApp':''))}catch(e){if(w)w.close();toast('Erro: '+(e.message||e.code),1)}}
+
 /* ---------------- métricas do site de pedidos ---------------- */
 const EV_TXT={visita:'Entrou no site',cotacao:'Viu o preço',dados:'Preencheu nome e WhatsApp',frete:'Cotou o frete',envio:'Clicou em enviar',pedido:'Pedido concluído',erro:'Erro no envio'};
 const PROB_TXT={formato:'Formato errado (não é PNG)',sem_dpi:'PNG sem DPI gravado',dpi_baixo:'DPI abaixo de 250',sem_transparencia:'Sem fundo transparente'};
@@ -4414,7 +4423,7 @@ function SolicitacaoDetalhe({db,id,solicitacoes=[],clientes,pedidos,produtos,cfg
     obsInterna:'Pedido online nº '+x.numero+' · artes: '+lista+(x.obs?' · Obs. do cliente: '+x.obs:''),obsCliente:'',
     itens:[{id:'it1',produtoId:x.produtoId,varianteId:'',qtd:x.metros,qtdTexto:'',preco:x.preco,desconto:0,obs:'Artes do pedido online nº '+x.numero,nomeProduto:prod.nome||x.produtoNome,descricao:prod.nome||x.produtoNome,unidade:prod.unidade||'metro_linear',grupo:c.grupo,setor:c.setor,tipoDtf:prod.tipoDtf||'textil',custo:r4(custoItem(prod,null,cfg,prod.unidade))}],
     arquivos:(x.arquivos||[]).map(a=>({nome:a.nome,path:a.path,larguraCm:a.larguraCm,alturaCm:a.alturaCm,qtd:a.qtd})),solicitacaoId:x.id,
-    pagamentos:[],autorizado:!!cli.producaoSemPagamento,etapaId:et.id,etapaDesde:agora,statusProd:'aguardando',ordens:{},historico:[{em:agora,por:me,tipo:'criacao',para:et.id,obs:'Criado a partir do pedido online nº '+x.numero}],cancelado:null,baixaEstoque:false,...(x.entrega!=='retirada'?{destinatario:{nome:C.nome,documento:dig(C.documento),telefone:dig(C.whatsapp),cep:dig(C.cep),endereco:C.endereco||'',numero:C.numero||'',complemento:C.complemento||'',bairro:C.bairro||'',cidade:C.cidade||'',uf:C.uf||'',...(C.lat&&C.lng?{lat:C.lat,lng:C.lng}:{})}}:{})};
+    pagamentos:[],autorizado:!!cli.producaoSemPagamento,etapaId:et.id,etapaDesde:agora,statusProd:'aguardando',ordens:{},historico:[{em:agora,por:me,tipo:'criacao',para:et.id,obs:'Criado a partir do pedido online nº '+x.numero}],cancelado:null,baixaEstoque:false,...(x.acompToken?{acompToken:x.acompToken}:{}),...(x.entrega!=='retirada'?{destinatario:{nome:C.nome,documento:dig(C.documento),telefone:dig(C.whatsapp),cep:dig(C.cep),endereco:C.endereco||'',numero:C.numero||'',complemento:C.complemento||'',bairro:C.bairro||'',cidade:C.cidade||'',uf:C.uf||'',...(C.lat&&C.lng?{lat:C.lat,lng:C.lng}:{})}}:{})};
    const pid='p'+numero+'-'+uid().slice(-4);const {id:_x,...corpo}=normalizar(p,me);await db.doc('pedidos/'+pid).set(corpo);
    await db.doc('solicitacoes/'+x.id).update({status:'convertida',pedidoId:pid,pedidoNumero:numero,convertidoEm:agora,por:me});toast('Pedido #'+numero+' criado');onClose();abrir('pedido',pid)}
   catch(e){toast('Erro: '+(e.message||e.code),1)}finally{setS(false)}};
