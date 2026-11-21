@@ -73,16 +73,47 @@ async function addArquivos(files){for(const f of files){if(!/^image\/(png|jpeg)$
  S.arqs.push({id:Math.random().toString(36).slice(2),file:f,url,img,nome:f.name,px:[img.naturalWidth,img.naturalHeight],dpi,larg:Math.round(w*10)/10,alt:Math.round(h*10)/10,qtd:1,lowres:dpi<150})}
  render();cotarPreco()}
 
-/* Montagem no rolo: prateleiras (maior altura primeiro), girando a peça quando ocupa menos comprimento */
-function montar(){const W=S.cfg.largura,m=S.cfg.margem,util=W-2*m;const pcs=[];let erro='';
- for(const a of S.arqs){const w=Number(a.larg),h=Number(a.alt);if(!(w>0&&h>0))continue;let ori=null;
-  const c1=w<=util?{w,h,rot:false}:null,c2=h<=util?{w:h,h:w,rot:true}:null;ori=c1&&c2?(c1.h<=c2.h?c1:c2):(c1||c2);
-  if(!ori){erro='A arte "'+a.nome+'" ('+num(w,1)+' × '+num(h,1)+' cm) é maior que a largura do rolo ('+num(util,1)+' cm úteis).';continue}
-  for(let k=0;k<Math.min(a.qtd,2000);k++)pcs.push({...ori,a})}
- pcs.sort((x,y)=>y.h-x.h);const prat=[];
- for(const p of pcs){let s=prat.find(s=>s.livre>=p.w+(s.n?m:0)&&p.h<=s.h);if(!s){s={h:p.h,livre:util,n:0,y:0,x:m};prat.push(s)}const gap=s.n?m:0;p.x=s.x+gap;s.x=p.x+p.w;s.livre-=p.w+gap;s.n++;p.s=s}
- let y=m;for(const s of prat){s.y=y;y+=s.h+m}for(const p of pcs){p.y=p.s.y}
- const comp=pcs.length?y:0;return{metros:Math.ceil(comp)/100,comp,pecas:pcs,erro,W}}
+/* Encaixe otimizado no rolo (strip packing): skyline "mais baixo primeiro", com rotação, várias ordenações; fica com a menor metragem. */
+function encaixar(itens,W,espaco,borda){
+ // itens: [{w,h,qtd,girar,ref}] em cm. Cada peça ganha o espaço entre artes; a largura útil ganha o mesmo espaço (a última peça não precisa dele).
+ const util=W-2*borda+espaco;const base=[];
+ for(const it of itens){for(let k=0;k<Math.min(it.qtd,3000);k++)base.push({w:it.w+espaco,h:it.h+espaco,ow:it.w,oh:it.h,girar:it.girar!==false,ref:it.ref})}
+ const grande=base.find(p=>p.w>util+1e-9&&(!p.girar||p.h>util+1e-9));if(grande)return{erro:grande.ref,comp:0,pecas:[]};
+ const ordens=[(a,b)=>Math.max(b.w,b.h)-Math.max(a.w,a.h)||b.w*b.h-a.w*a.h,(a,b)=>b.h-a.h||b.w-a.w,(a,b)=>b.w-a.w||b.h-a.h,(a,b)=>b.w*b.h-a.w*a.h,(a,b)=>(b.w+b.h)-(a.w+a.h)];
+ let melhor=null;
+ for(const ord of ordens)for(const modo of ['livre','deitado','em_pe']){
+  const ps=base.map(p=>({...p}));
+  // orientação preferida por modo (livre = a que encaixa melhor em cada posição)
+  ps.sort(ord);const sky=[{x:0,y:0,w:util}];const out=[];
+  for(const p of ps){let best=null;const oris=[];const o1={w:p.w,h:p.h,r:false},o2={w:p.h,h:p.w,r:true};
+   if(modo==='livre'){oris.push(o1);if(p.girar)oris.push(o2)}else{const deit=p.w>=p.h?o1:o2,pe=p.w>=p.h?o2:o1;const pref=modo==='deitado'?deit:pe;if(p.girar||pref===o1)oris.push(pref);if(!oris.includes(o1))oris.push(o1)}
+   for(const o of oris){if(o.w>util+1e-9)continue;
+    for(let i=0;i<sky.length;i++){const x=sky[i].x;if(x+o.w>util+1e-9)break;let y=0,j=i,rest=o.w;while(rest>1e-9&&j<sky.length){y=Math.max(y,sky[j].y);rest-=sky[j].w;j++}
+     if(rest>1e-9)continue;const topo=y+o.h;
+     // desperdício sob a peça (área entre o skyline e a base da peça)
+     let perda=0;rest=o.w;j=i;while(rest>1e-9&&j<sky.length){const ww=Math.min(rest,sky[j].w);perda+=ww*(y-sky[j].y);rest-=ww;j++}
+     const c={x,y,o,topo,perda};if(!best||c.topo<best.topo-1e-9||(Math.abs(c.topo-best.topo)<1e-9&&(c.perda<best.perda-1e-9||(Math.abs(c.perda-best.perda)<1e-9&&c.x<best.x))))best=c}}
+   if(!best)return{erro:p.ref,comp:0,pecas:[]};
+   const {x,y,o}=best;out.push({x,y,w:o.w-espaco,h:o.h-espaco,rot:o.r,ref:p.ref});
+   // atualiza o skyline
+   const nx=x+o.w,ns=[];for(const s of sky){const sx2=s.x+s.w;if(sx2<=x+1e-9||s.x>=nx-1e-9){ns.push(s);continue}if(s.x<x)ns.push({x:s.x,y:s.y,w:x-s.x});if(sx2>nx)ns.push({x:nx,y:s.y,w:sx2-nx})}
+   ns.push({x,y:y+o.h,w:o.w});ns.sort((a,b)=>a.x-b.x);const m=[];for(const s of ns){const l=m[m.length-1];if(l&&Math.abs(l.y-s.y)<1e-9&&Math.abs(l.x+l.w-s.x)<1e-9)l.w+=s.w;else m.push({...s})}sky.length=0;sky.push(...m)}
+  const comp=Math.max(0,...out.map(p=>p.y+p.h));if(!melhor||comp<melhor.comp-1e-9)melhor={comp,pecas:out}}
+ // uma arte só (o mais comum): testa combinar fileiras em pé e deitadas e fica com a menor
+ if(itens.length===1&&base.length>0){const it=itens[0],n=base.length;const A={w:it.w+espaco,h:it.h+espaco,r:false},B={w:it.h+espaco,h:it.w+espaco,r:true};const oris=it.girar===false?[A]:[A,B];
+  for(const P of oris)for(const Q of oris){const pa=Math.floor(util/P.w+1e-9),pb=Math.floor(util/Q.w+1e-9);if(!pa||!pb)continue;
+   for(let ra=0;ra<=Math.ceil(n/pa);ra++){const resto=Math.max(0,n-ra*pa);const rb=Math.ceil(resto/pb);const comp=ra*P.h+rb*Q.h-(ra+rb?espaco:0);
+    if(comp<melhor.comp-1e-6){const out=[];let y=0,k=0;for(let r=0;r<ra&&k<n;r++){for(let c=0;c<pa&&k<n;c++,k++)out.push({x:c*P.w,y,w:P.w-espaco,h:P.h-espaco,rot:P.r,ref:it.ref});y+=P.h}
+     for(let r=0;r<rb&&k<n;r++){for(let c=0;c<pb&&k<n;c++,k++)out.push({x:c*Q.w,y,w:Q.w-espaco,h:Q.h-espaco,rot:Q.r,ref:it.ref});y+=Q.h}melhor={comp,pecas:out}}}}}
+ for(const p of melhor.pecas)p.x+=borda;melhor.comp+=borda*2;return melhor}
+
+
+/* Montagem otimizada no rolo */
+function montar(){const W=S.cfg.largura,esp=S.cfg.espaco,bor=S.cfg.borda;const its=S.arqs.filter(a=>a.larg>0&&a.alt>0).map(a=>({w:Number(a.larg),h:Number(a.alt),qtd:a.qtd,girar:a.girar!==false,ref:a}));
+ if(!its.length)return{metros:0,comp:0,pecas:[],erro:'',W};const r=encaixar(its,W,esp,bor);
+ if(r.erro)return{metros:0,comp:0,pecas:[],erro:'A arte "'+r.erro.nome+'" ('+num(r.erro.larg,1)+' × '+num(r.erro.alt,1)+' cm) não cabe na largura do rolo ('+num(W-2*bor,2)+' cm).',W};
+ const pecas=r.pecas.map(p=>({...p,a:p.ref}));const area=its.reduce((s,i)=>s+i.w*i.h*Math.min(i.qtd,3000),0);
+ return{metros:Math.ceil(r.comp-1e-9)/100,comp:r.comp,pecas,erro:'',W,aprov:r.comp?area/(W*r.comp)*100:0}}
 function desenhar(){const cv=$('#cv');if(!cv)return;const L=layout;const W=L.W;const comp=Math.max(L.comp,20);const cw=cv.clientWidth||300;const esc=cw/W;const ch=Math.min(Math.max(comp*esc,140),900);const k=Math.min(esc,ch/comp);
  const dpr=window.devicePixelRatio||1;cv.width=cw*dpr;cv.height=ch*dpr;cv.style.height=ch+'px';const g=cv.getContext('2d');g.scale(dpr,dpr);g.clearRect(0,0,cw,ch);
  const ox=(cw-W*k)/2;g.fillStyle='rgba(255,255,255,.06)';g.fillRect(ox,0,W*k,ch);
@@ -99,7 +130,7 @@ async function enviar(){const C=S.cliente;if(!S.arqs.length)return aviso('Envie 
  S.enviando=true;S.prog=2;S.msg='';render();
  try{const up=await api({acao:'upload',arquivos:S.arqs.map(a=>({nome:a.nome,tipo:a.file.type,tamanho:a.file.size}))});
   for(let i=0;i<S.arqs.length;i++){const u=up.uploads[i];const {error}=await sb.storage.from('artes').uploadToSignedUrl(u.path,u.token,S.arqs[i].file,{contentType:S.arqs[i].file.type});if(error)throw new Error('Falha ao enviar '+S.arqs[i].nome+': '+error.message);S.arqs[i].path=u.path;S.prog=Math.round((i+1)/S.arqs.length*90);render()}
-  const r=await api({acao:'enviar',rid:up.rid,site:$('#site')?.value||'',cliente:C,arquivos:S.arqs.map(a=>({nome:a.nome,path:a.path,larguraCm:a.larg,alturaCm:a.alt,qtd:a.qtd,dpi:a.dpi})),metros:layout.metros,entrega:S.entrega,frete:S.frete,obs:S.obs});
+  const r=await api({acao:'enviar',rid:up.rid,site:$('#site')?.value||'',cliente:C,arquivos:S.arqs.map(a=>({nome:a.nome,path:a.path,larguraCm:a.larg,alturaCm:a.alt,qtd:a.qtd,dpi:a.dpi,girar:a.girar!==false})),metros:layout.metros,entrega:S.entrega,frete:S.frete,obs:S.obs});
   S.feito=r;S.enviando=false;render();window.scrollTo(0,0)}catch(e){S.enviando=false;S.msg=e.message||'Não foi possível enviar';render()}}
 function aviso(m){S.msg=m;render()}
 
@@ -110,12 +141,12 @@ function render(){
   app.innerHTML=`<div class="feito card"><span class="badge">Pedido recebido</span><h2>Obrigado, ${esc(S.cliente.nome.split(' ')[0])}!</h2><div class="num">Pedido online nº <b>${f.numero}</b> · ${num(f.metros)} m · ${moeda(f.total)}</div><p>Vamos conferir as artes e confirmar o valor e o prazo pelo WhatsApp. Se quiser adiantar, fale com a gente:</p><a class="btn2" href="${wa}" target="_blank" rel="noreferrer">Falar no WhatsApp</a> <button class="btn2" onclick="location.reload()">Fazer outro pedido</button></div>`;return}
  layout=montar();const L=layout;const pr=S.preco||{preco:S.cfg.preco,origem:'tabela'};const sub=Math.round(L.metros*pr.preco*100)/100;const fr=S.entrega==='envio'&&S.frete?S.frete.preco:0;const C=S.cliente;
  const origem={tabela:'preço de tabela',faixa:'preço por quantidade',cliente:'seu preço de cliente',promocao:'sua promoção por quantidade'}[pr.origem]||'';
- app.innerHTML=`<div class="hero"><h1>Envie suas artes e receba a cotação na hora</h1><p>Mande os PNGs, nós montamos no rolo de ${num(S.cfg.largura,0)} cm, calculamos os metros, o valor e o frete. Depois é só enviar o pedido.</p>${S.cfg.aviso?`<p style="margin-top:8px"><b>${esc(S.cfg.aviso)}</b></p>`:''}</div>
+ app.innerHTML=`<div class="hero"><h1>Envie suas artes e receba a cotação na hora</h1><p>Mande os PNGs e a quantidade de cada um. O sistema encaixa as estampas lado a lado no rolo de ${num(S.cfg.largura,1)} cm para gastar o mínimo de filme e já calcula os metros, o valor e o frete. Depois é só enviar o pedido.</p>${S.cfg.aviso?`<p style="margin-top:8px"><b>${esc(S.cfg.aviso)}</b></p>`:''}</div>
  <main><div>
   <section class="card"><div class="st"><b>1</b><h2>Suas artes</h2></div>
    <div class="drop" id="drop"><b>Toque para escolher ou arraste os PNGs aqui</b><span>PNG com fundo transparente, de preferência em 300 DPI. Ajuste a largura e a quantidade de cada arte.</span><input id="fi" type="file" accept="image/png,image/jpeg" multiple hidden></div>
    <div class="arqs">${S.arqs.map(a=>`<div class="arq" data-id="${a.id}"><div class="th"><img src="${a.url}" alt=""></div><div><div class="nm">${esc(a.nome)}</div><div class="sm">${a.px[0]}×${a.px[1]} px · ${a.dpi} DPI${a.lowres?' · <b style="color:var(--warn)">resolução baixa, pode sair serrilhado</b>':''}</div>
-    <div class="ctl"><label>Largura <input class="tab" data-k="larg" value="${num(a.larg,1)}" inputmode="decimal"> cm</label><label>Altura <input class="tab" data-k="alt" value="${num(a.alt,1)}" inputmode="decimal"> cm</label><label>Quantidade <input class="tab" data-k="qtd" value="${a.qtd}" inputmode="numeric"></label></div></div><button class="x" data-rm="${a.id}" aria-label="Remover">×</button></div>`).join('')}</div>
+    <div class="ctl"><label>Largura <input class="tab" data-k="larg" value="${num(a.larg,1)}" inputmode="decimal"> cm</label><label>Altura <input class="tab" data-k="alt" value="${num(a.alt,1)}" inputmode="decimal"> cm</label><label>Quantidade <input class="tab" data-k="qtd" value="${a.qtd}" inputmode="numeric"></label><label style="gap:6px"><input type="checkbox" data-g="1" ${a.girar!==false?'checked':''} style="width:18px;min-height:18px"> pode girar</label></div></div><button class="x" data-rm="${a.id}" aria-label="Remover">×</button></div>`).join('')}</div>
    ${L.erro?`<div class="msg err">${esc(L.erro)}</div>`:''}</section>
   <section class="card"><div class="st"><b>2</b><h2>Seus dados</h2></div><div class="g2">
    <label class="f">Nome ou empresa *<input data-c="nome" value="${esc(C.nome)}" autocomplete="name"></label><label class="f">WhatsApp com DDD *<input data-c="whatsapp" value="${esc(C.whatsapp)}" inputmode="tel" autocomplete="tel" placeholder="(16) 99999-9999"></label>
@@ -128,7 +159,7 @@ function render(){
     <div style="margin-top:12px">${S.fretes==='carregando'?'<div class="msg">Cotando frete…</div>':S.fretes==='indisponivel'?'<div class="msg">Não foi possível cotar o frete agora; vamos informar o valor na confirmação.</div>':Array.isArray(S.fretes)?(S.fretes.length?`<div style="display:grid;gap:8px">${S.fretes.map((o,i)=>`<button class="op ${S.frete&&S.frete.id===o.id?'on':''}" data-fr="${i}"><span><b>${esc(o.empresa)} ${esc(o.servico)}</b><br><span class="hint">${o.prazo} dias úteis</span></span><b class="tab">${moeda(o.preco)}</b></button>`).join('')}</div>`:'<div class="msg">Nenhuma transportadora atende esse CEP.</div>'):`<button class="btn2" id="cotar" ${dig(C.cep).length===8&&L.metros?'':'disabled'}>Cotar frete</button>`}</div>`:''}
    <label class="f" style="margin-top:14px">Observações<textarea data-o="1" rows="3" style="padding:10px 12px">${esc(S.obs)}</textarea></label></section>
  </div>
- <aside><div class="card"><div class="rolo"><div class="t"><span>Montagem no rolo de ${num(S.cfg.largura,0)} cm</span><b class="tab">${num(L.metros)} m</b></div><canvas id="cv" role="img" aria-label="Montagem das artes no rolo"></canvas></div>
+ <aside><div class="card"><div class="rolo"><div class="t"><span>Montagem otimizada · rolo de ${num(S.cfg.largura,3)} cm</span><b class="tab">${num(L.metros)} m</b></div><canvas id="cv" role="img" aria-label="Montagem das artes no rolo"></canvas>${L.pecas.length?`<div class="t" style="margin:8px 0 0"><span>${L.pecas.length} estampas encaixadas</span><span>aproveitamento ${num(L.aprov,0)}%</span></div>`:''}</div>
   <div class="tot"><div><span>Metros</span><b class="tab">${num(L.metros)} m${L.metros&&L.metros<S.cfg.minimo?' (mín. '+num(S.cfg.minimo)+' m)':''}</b></div><div><span>Preço por metro</span><span class="tab">${moeda(pr.preco)}</span></div>
    <div class="hint" style="justify-content:flex-end">${origem}${S.preco&&S.preco.identificado?' <span class="badge">cliente identificado</span>':''}</div><div><span>Impressão</span><span class="tab">${moeda(Math.max(L.metros,L.metros?S.cfg.minimo:0)*pr.preco)}</span></div>
    ${S.entrega==='envio'?`<div><span>Frete</span><span class="tab">${S.frete?moeda(fr):'—'}</span></div>`:''}<div class="big"><span>Total</span><span class="tab">${moeda(Math.max(L.metros,L.metros?S.cfg.minimo:0)*pr.preco+fr)}</span></div></div>
@@ -139,6 +170,7 @@ function render(){
 function bind(){const dr=$('#drop'),fi=$('#fi');if(dr){dr.onclick=()=>fi.click();fi.onchange=e=>addArquivos([...e.target.files]);dr.ondragover=e=>{e.preventDefault();dr.classList.add('on')};dr.ondragleave=()=>dr.classList.remove('on');dr.ondrop=e=>{e.preventDefault();dr.classList.remove('on');addArquivos([...e.dataTransfer.files])}}
  document.querySelectorAll('.arq input').forEach(i=>i.onchange=()=>{const a=S.arqs.find(x=>x.id===i.closest('.arq').dataset.id);const k=i.dataset.k;const v=pn(i.value);
   if(k==='qtd')a.qtd=Math.max(1,Math.round(v)||1);else if(v>0){const r=a.px[1]/a.px[0];if(k==='larg'){a.larg=Math.round(v*10)/10;a.alt=Math.round(v*r*10)/10}else{a.alt=Math.round(v*10)/10;a.larg=Math.round(v/r*10)/10}}S.fretes=null;S.frete=null;render();cotarPreco()});
+ document.querySelectorAll('[data-g]').forEach(i=>i.onchange=()=>{const a=S.arqs.find(x=>x.id===i.closest('.arq').dataset.id);a.girar=i.checked;S.fretes=null;S.frete=null;render();cotarPreco()});
  document.querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>{S.arqs=S.arqs.filter(a=>a.id!==b.dataset.rm);render();cotarPreco()});
  document.querySelectorAll('[data-c]').forEach(i=>{i.oninput=()=>{S.cliente[i.dataset.c]=i.value};i.onchange=()=>{const k=i.dataset.c;if(k==='cep'){S.fretes=null;S.frete=null;buscaCep().then(()=>{if(dig(S.cliente.cep).length===8&&layout.metros)cotarFrete()})}if(k==='whatsapp'||k==='documento')cotarPreco()}});
  const ob=document.querySelector('[data-o]');if(ob)ob.oninput=()=>S.obs=ob.value;
