@@ -2862,9 +2862,11 @@ function MonitorAoVivo({pedidos=[],campanhas=[],solicitacoes=[],cfg,pode,onClose
  const metros=sum(H,p=>(p.totais?.mt||0)+(p.totais?.mu||0)),pecas=sum(H,p=>p.totais?.pecas||0);const tk=H.length?fat/H.length:0;
  const porHora=(ps,ate)=>{const a=Array(24).fill(0);for(const p of ps)a[hDe(p)]+=Number(p.total)||0;let c=0;return a.map((v,i)=>i>ate?null:(c+=v))};
  const curH=porHora(H,hAg),curO=porHora(O,23);const maxY=Math.max(10,...curH.filter(x=>x!=null),...curO);
- const F=M?.funil||{},FO=MO?.funil||{};const visit=F.visitantes||0,cart=F.arquivo||0,viu=F.cotacao||0,dados=F.dados||0,ped=F.pedido||0;
+ const pedCanc=new Set(pedidos.filter(p=>p.cancelado).map(p=>p.id));const onCanc=new Set(solicitacoes.filter(x=>x.status==='recusada'||x.status==='cancelada'||(x.pedidoId&&pedCanc.has(x.pedidoId))).map(x=>Number(x.numero)));
+ const evCanc=e=>e.ev==='pedido'&&e.dados&&onCanc.has(Number(e.dados.numero));const nCancHoje=(M?.feed||[]).filter(e=>evCanc(e)&&diaSP(e.ts)===hoje).length;
+ const F=M?.funil||{},FO=MO?.funil||{};const visit=F.visitantes||0,cart=F.arquivo||0,viu=F.cotacao||0,dados=F.dados||0,ped=Math.max(0,(F.pedido||0)-nCancHoje);
  const cliques=sum(M?.campanhas||[],c=>c.visitas||0),cliquesO=sum(MO?.campanhas||[],c=>c.visitas||0);const imps=sum(campanhas,c=>Number(c.impressoes)||0);
- const conv=visit?ped/visit*100:0;const sol=solicitacoes.filter(x=>diaSP(x.criadoEm)===hoje);
+ const conv=visit?ped/visit*100:0;const sol=solicitacoes.filter(x=>diaSP(x.criadoEm)===hoje&&!onCanc.has(Number(x.numero)));
  const visH=Array.from({length:24},(_,i)=>Number((M?.horas||{})[i]||0));const maxV=Math.max(1,...visH);
  // novos pedidos: destaque + som
  useEffect(()=>{const ids=new Set(H.map(p=>p.id));if(vistos.current===null){vistos.current=ids;return}const novos=H.filter(p=>!vistos.current.has(p.id));vistos.current=ids;
@@ -2874,7 +2876,7 @@ function MonitorAoVivo({pedidos=[],campanhas=[],solicitacoes=[],cfg,pode,onClose
  const T=(t,v,fmt,cmp,sub,cor)=>html`<div className="mon-tile"><div className="mon-t">${t}</div><div className="mon-v" style=${cor?{color:cor}:null}><${Num} v=${v} fmt=${fmt}/></div><div className="mon-s">${cmp!=null?delta(v,cmp):''}${sub?html`<span>${sub}</span>`:''}</div></div>`;
  const X=i=>40+i*(920/23),Y=v=>250-(v/maxY)*220;const path=arr=>arr.map((v,i)=>v==null?'':(i===0||arr[i-1]==null?'M':'L')+X(i).toFixed(1)+','+Y(v).toFixed(1)).join(' ');
  const lastI=curH.reduce((m,v,i)=>v!=null?i:m,0);const area=path(curH)+` L${X(lastI)},250 L${X(0)},250 Z`;
- const feed=[...H.map(p=>({ts:p.criadoEm,tipo:'venda',txt:'Pedido #'+p.numero+' · '+(p.clienteNome||'Cliente'),v:p.total})),...(M?.feed||[]).filter(e=>['visita','arquivo','cotacao','dados','pedido'].includes(e.ev)&&diaSP(e.ts)===hoje).map(e=>({ts:e.ts,tipo:e.ev,txt:{visita:'Novo visitante no site',arquivo:'Adicionou arquivo',cotacao:'Viu o preço',dados:'Preencheu os dados',pedido:'Enviou pedido online'}[e.ev]+(e.origem&&e.origem!=='direto'?' · '+e.origem:''),v:e.ev==='pedido'?Number(e.dados?.total)||null:null}))].sort((a,b)=>String(b.ts).localeCompare(String(a.ts))).slice(0,14);
+ const feed=[...H.map(p=>({ts:p.criadoEm,tipo:'venda',txt:'Pedido #'+p.numero+' · '+(p.clienteNome||'Cliente'),v:p.total})),...(M?.feed||[]).filter(e=>['visita','arquivo','cotacao','dados','pedido'].includes(e.ev)&&diaSP(e.ts)===hoje&&!evCanc(e)).map(e=>({ts:e.ts,tipo:e.ev,txt:{visita:'Novo visitante no site',arquivo:'Adicionou arquivo',cotacao:'Viu o preço',dados:'Preencheu os dados',pedido:'Enviou pedido online'}[e.ev]+(e.origem&&e.origem!=='direto'?' · '+e.origem:''),v:e.ev==='pedido'?Number(e.dados?.total)||null:null}))].sort((a,b)=>String(b.ts).localeCompare(String(a.ts))).slice(0,14);
  const icoF={venda:'💰',visita:'👀',arquivo:'🛒',cotacao:'🏷️',dados:'📝',pedido:'✅'};
  const funil=[['Visitantes',visit],['Adicionaram arquivo',cart],['Viram o preço',viu],['Preencheram dados',dados],['Pedidos online',ped]];const fmax=Math.max(1,visit);
  const relogio=new Intl.DateTimeFormat('pt-BR',{timeZone:TZ,hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(new Date(agora));const dataTxt=new Intl.DateTimeFormat('pt-BR',{timeZone:TZ,weekday:'long',day:'2-digit',month:'long'}).format(new Date(agora));
@@ -2893,7 +2895,7 @@ function MonitorAoVivo({pedidos=[],campanhas=[],solicitacoes=[],cfg,pode,onClose
    .mon-flash{position:fixed;left:50%;top:22px;transform:translateX(-50%);z-index:210;background:linear-gradient(135deg,#a3089a,#f97316);color:#fff;padding:16px 26px;border-radius:18px;box-shadow:0 20px 60px rgba(163,8,154,.5);font:700 22px 'Space Grotesk',Inter,sans-serif;animation:monfl .6s cubic-bezier(.2,1.4,.4,1)}@keyframes monfl{from{opacity:0;transform:translate(-50%,-30px) scale(.9)}to{opacity:1;transform:translate(-50%,0) scale(1)}}
    .mon-bar{height:30px;border-radius:8px;background:linear-gradient(90deg,#a3089a,#e879f9);display:flex;align-items:center;padding:0 10px;font-weight:700;font-size:13px;white-space:nowrap;min-width:fit-content;transition:width .8s}
    @media(max-width:1100px){.mon-hero{grid-template-columns:1fr 1fr}.mon-grid{grid-template-columns:1fr}.mon-row{grid-template-columns:1fr 1fr}}`}</style>
-  ${flash&&html`<div className="mon-flash">🎉 Novo pedido #${flash.p.numero} · ${flash.p.clienteNome}${verFat?' · '+moeda(flash.p.total):''}</div>`}
+  ${flash&&!pedCanc.has(flash.p.id)&&html`<div className="mon-flash">🎉 Novo pedido #${flash.p.numero} · ${flash.p.clienteNome}${verFat?' · '+moeda(flash.p.total):''}</div>`}
   <div className="mon-top"><div style=${{display:'flex',alignItems:'center',gap:14}}><img src=${LOGO} alt=${cfg.empresa.nome} style=${{height:42}}/><div><div style=${{font:"700 22px 'Space Grotesk',Inter,sans-serif"}}>Vendas ao vivo</div><div style=${{color:'#9d94a3',fontSize:13,textTransform:'capitalize'}}>${dataTxt}</div></div><span className="mon-live"><span className="mon-dot"></span>AO VIVO</span></div>
    <div style=${{display:'flex',alignItems:'center',gap:10}}><div className="tab" style=${{font:"700 30px 'Space Grotesk',Inter,sans-serif",letterSpacing:'.02em'}}>${relogio}</div>
     <button className="mon-btn" onClick=${()=>{const n=!som;setSom(n);try{localStorage.setItem('rp_mon_som',n?'1':'0')}catch(e){}}}>${som?'🔔 Som ligado':'🔕 Som desligado'}</button>
