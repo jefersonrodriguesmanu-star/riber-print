@@ -3932,6 +3932,14 @@ const CRC_T=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;fo
 const crc32=u=>{let c=0xFFFFFFFF;for(let i=0;i<u.length;i++)c=CRC_T[(c^u[i])&255]^(c>>>8);return(c^0xFFFFFFFF)>>>0};
 async function pngComDpi(blob,dpi){const u=new Uint8Array(await blob.arrayBuffer());const ppm=Math.round(dpi/0.0254);const ch=new Uint8Array(21);const dv=new DataView(ch.buffer);dv.setUint32(0,9);ch.set([112,72,89,115],4);dv.setUint32(8,ppm);dv.setUint32(12,ppm);ch[16]=1;dv.setUint32(17,crc32(ch.subarray(4,17)));
  const out=new Uint8Array(u.length+21);out.set(u.subarray(0,33));out.set(ch,33);out.set(u.subarray(33),54);return new Blob([out],{type:'image/png'})}
+/* divide a montagem em arquivos de no máximo maxCm, sem cortar estampa: usa uma linha reta livre quando existe; senão, cada arquivo leva as estampas que cabem inteiras na janela e o resto vai para o próximo */
+function segmentosPecas(pecas,comp,maxCm,esp){const E=1e-6,meio=(esp||0)/2;let rest=[...pecas].sort((a,b)=>a.y-b.y||a.x-b.x);const segs=[];
+ while(rest.length){const top=Math.min(...rest.map(p=>p.y));const y0=segs.length?Math.max(0,top-meio):0;const lim=y0+maxCm;const fundo=Math.max(...rest.map(p=>p.y+p.h));
+  if(fundo+meio<=lim+E||Math.min(fundo+meio,comp)-y0<=maxCm+E){segs.push({y0,y1:Math.min(Math.max(fundo+meio,y0),Math.max(comp,fundo)),pecas:rest});break}
+  const livre=y=>!rest.some(p=>p.y<y-E&&p.y+p.h>y+E);let c=null;for(const b of [...new Set(rest.map(p=>p.y+p.h+meio))].sort((a,b)=>a-b)){if(b<=y0+maxCm*0.75)continue;if(b>lim+E)break;if(livre(b))c=b}
+  let seg=c!=null?rest.filter(p=>p.y+p.h<=c+E):rest.filter(p=>p.y+p.h+meio<=lim+E);if(!seg.length)seg=[rest[0]];
+  const y1=c!=null?c:Math.min(lim,Math.max(...seg.map(p=>p.y+p.h))+meio);const ids=new Set(seg);rest=rest.filter(p=>!ids.has(p));segs.push({y0,y1:Math.max(y1,Math.max(...seg.map(p=>p.y+p.h))),pecas:seg})}
+ return segs}
 function cortesSegmentos(pecas,comp,maxCm,esp){const cuts=[0];let ini=0;const livre=y=>!pecas.some(p=>p.y<y-1e-6&&p.y+p.h>y+1e-6);const bordas=[...new Set(pecas.map(p=>p.y+p.h))].sort((a,b)=>a-b).map(b=>Math.min(comp,b+esp/2));
  while(comp-ini>maxCm+1e-6){const lim=ini+maxCm;let c=null;for(const y of bordas){if(y<=ini+1)continue;if(y>lim)break;if(livre(y))c=y}if(c==null){c=bordas.find(y=>y>lim&&livre(y));if(c==null)c=comp}if(c>=comp-1e-6)break;cuts.push(c);ini=c}cuts.push(comp);return cuts}
 function baixarBlob(blob,nome){const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download=nome;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),60000)}
@@ -3950,11 +3958,11 @@ async function pngEmFaixas({pecas,y0,y1,Wpx,px,bm,dpi,prog}){const H=Math.max(1,
 async function exportarMontagemPng({pecas,comp,W,esp,nome,arqs,maxCm=500,dpi=300,prog}){const px=cm=>Math.round(cm/2.54*dpi);const Wpx=px(W);if(!pecas.length)throw new Error('Montagem vazia');
  if(typeof CompressionStream==='undefined')throw new Error('Este navegador não consegue gerar o PNG. Use o Chrome atualizado.');
  const faltam=[...new Set(pecas.map(p=>p.ref.arquivo))].filter(n=>!arqs.find(a=>a.nome===n));if(faltam.length)throw new Error('Abra a pasta de estampas: não encontrei '+faltam.slice(0,3).join(', ')+(faltam.length>3?'…':''));
- maxCm=Math.min(maxCm,500);const cuts=cortesSegmentos(pecas,comp,maxCm,esp);const n=cuts.length-1;const bms={};
+ maxCm=Math.min(maxCm,500);const segs=segmentosPecas(pecas,comp,maxCm,esp);const n=segs.length;const bms={};
  const bm=async nm=>{if(bms[nm])return bms[nm];const a=arqs.find(x=>x.nome===nm);const f=a.file||(a.file=await a.handle.getFile());return bms[nm]=await createImageBitmap(f)};
- try{for(let i=0;i<n;i++){const y0=cuts[i],y1=cuts[i+1];const ps=pecas.filter(p=>p.y+p.h>y0+1e-6&&p.y<y1-1e-6);
+ try{for(let i=0;i<n;i++){const {y0,y1,pecas:ps}=segs[i];
    const blob=await pngEmFaixas({pecas:ps,y0,y1,Wpx,px,bm,dpi,prog:pc=>prog&&prog((n>1?'Parte '+(i+1)+' de '+n+': ':'Gerando PNG: ')+pc+'%')});
-   baixarBlob(blob,nome+(n>1?'-parte'+(i+1)+'de'+n:'')+'.png');await new Promise(r=>setTimeout(r,500))}}
+   baixarBlob(blob,nome+(n>1?'-parte'+(i+1)+'de'+n+'-'+num((y1-y0)/100)+'m':'')+'.png');await new Promise(r=>setTimeout(r,500))}}
  finally{for(const k in bms)try{bms[k].close()}catch(e){}}return n}
 
 /* ---- montar PNGs avulsos (artes de clientes) sem pedidos do UpSeller ---- */
@@ -4633,12 +4641,12 @@ function montagemSolic(x,cfg){const arqs=x.arquivos||[];if(!arqs.length)return n
  return{W,comp:r.comp,pecas:r.pecas,igual:false}}
 async function baixarMontagemSolic({x,cfg,maxCm=500,prog}){const M=montagemSolic(x,cfg);if(!M||!M.pecas.length)throw new Error('Este pedido não tem artes para montar');
  if(!window.RP_SB)throw new Error('Disponível no sistema online');if(typeof CompressionStream==='undefined')throw new Error('Este navegador não consegue gerar o PNG. Use o Chrome atualizado.');
- const dpi=300,px=cm=>Math.round(cm/2.54*dpi),Wpx=px(M.W),esp=Number(x.espaco??0.5);const cuts=cortesSegmentos(M.pecas,M.comp,Math.min(maxCm,500),esp);const n=cuts.length-1;const bms={};
+ const dpi=300,px=cm=>Math.round(cm/2.54*dpi),Wpx=px(M.W),esp=Number(x.espaco??0.5);const segs=segmentosPecas(M.pecas,M.comp,Math.min(maxCm,500),esp);const n=segs.length;const bms={};
  const bm=async path=>{if(bms[path])return bms[path];const {data,error}=await window.RP_SB.storage.from('artes').download(path);if(error||!data)throw new Error('Não consegui baixar a arte '+path.split('/').pop());return bms[path]=await createImageBitmap(data)};
  const nome='pedido-online-'+x.numero+'-'+String((x.cliente||{}).nome||'cliente').normalize('NFD').replace(/[^\w]+/g,'-').replace(/^-|-$/g,'').slice(0,30)+'-'+num(M.comp/100)+'m';
- try{for(let i=0;i<n;i++){const y0=cuts[i],y1=cuts[i+1];const ps=M.pecas.filter(p=>p.y+p.h>y0+1e-6&&p.y<y1-1e-6);
+ try{for(let i=0;i<n;i++){const {y0,y1,pecas:ps}=segs[i];
    const blob=await pngEmFaixas({pecas:ps,y0,y1,Wpx,px,bm,dpi,prog:pc=>prog&&prog((n>1?'Parte '+(i+1)+' de '+n+': ':'Gerando PNG: ')+pc+'%')});
-   baixarBlob(blob,nome+(n>1?'-parte'+(i+1)+'de'+n:'')+'.png');await new Promise(r=>setTimeout(r,500))}}
+   baixarBlob(blob,nome+(n>1?'-parte'+(i+1)+'de'+n+'-'+num((y1-y0)/100)+'m':'')+'.png');await new Promise(r=>setTimeout(r,500))}}
  finally{for(const k in bms)try{bms[k].close()}catch(e){}}return n}
 function MontagemOnline({x,cfg,urls,toast}){const M=useMemo(()=>montagemSolic(x,cfg),[x.id,x.montagem]);const ref=useRef(null);const [prog,setProg]=useState('');const [maxCm,setMaxCm]=useState('500');
  useEffect(()=>{const cv=ref.current;if(!cv||!M)return;let vivo=true;(async()=>{const cw=cv.clientWidth||600;const k=cw/M.W;const ch=Math.min(Math.max(M.comp*k,120),520);const kk=Math.min(k,ch/M.comp);const dpr=window.devicePixelRatio||1;cv.width=cw*dpr;cv.height=ch*dpr;cv.style.height=ch+'px';
