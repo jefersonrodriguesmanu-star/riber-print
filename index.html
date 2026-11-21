@@ -3052,6 +3052,7 @@ function PedidoDetalhe({db,id,pedidos,clientes,produtos,cfg,me,pode,toast,onClos
    ${!p.cancelado&&pode('editar')&&html`<button className="btn" onClick=${()=>{onClose();setForm({t:'pedido',pedido:p})}}>Editar</button>`}
    ${pode('criar')&&html`<button className="btn" onClick=${duplicar}>Duplicar</button>`}
    <button className="btn" onClick=${comprovante}><${Ic} n="dl" s=${15}/>Comprovante</button>
+   ${ONLINE()&&(p.arquivos||[]).length>0&&html`<button className="btn" onClick=${()=>baixarTodas(p.arquivos,toast)}><${Ic} n="dl" s=${15}/>Baixar artes (${p.arquivos.length})</button>`}
    ${ONLINE()&&p.entrega&&p.entrega!=='retirada'&&!p.cancelado&&html`<button className="btn" onClick=${()=>abrir('etiqueta',p.id)}>${p.etiqueta&&p.etiqueta.url?'Etiqueta de envio':'Gerar etiqueta de envio'}</button>`}
    ${!p.cancelado&&pode('cancelar')&&html`<button className="btn d" onClick=${()=>setDlg('cancel')}>Cancelar</button>`}</div>
   <div className="grid" style=${{gridTemplateColumns:'minmax(0,1fr) 300px',gap:14}}>
@@ -3789,6 +3790,10 @@ function ReceberCompra({db,c,insumos,me,toast,onClose}){const [its,setIts]=useSt
 
 /* ---------------- pedidos online (portal do cliente) ---------------- */
 const PORTAL_URL='https://riber-print.github.io/pedido.html';
+async function baixarArte(a,toast){try{const sb=window.RP_SB;if(!sb)throw new Error('Disponível só no site do sistema');const {data,error}=await sb.storage.from('artes').download(a.path);if(error)throw error;
+ const nome=(a.nome||a.path.split('/').pop()).replace(/[\\/:*?"<>|]+/g,'_');const url=URL.createObjectURL(data);const el=document.createElement('a');el.href=url;el.download=/\.(png|jpe?g|pdf)$/i.test(nome)?nome:nome+'.png';document.body.appendChild(el);el.click();setTimeout(()=>{URL.revokeObjectURL(url);el.remove()},4000);return true}
+ catch(e){toast&&toast('Não foi possível baixar '+(a.nome||'')+': '+(e.message||e.error||e),1);return false}}
+async function baixarTodas(arqs,toast){let n=0;for(const a of arqs){if(await baixarArte(a,toast))n++;await espera(400)}toast&&toast(n+' arte(s) baixada(s)')}
 const ST_SOL={nova:['Nova','b-warn'],convertida:['Virou pedido','b-ok'],recusada:['Recusada','b-red']};
 function PedidosOnline(ctx){const {db,solicitacoes=[],clientes,pedidos,produtos,cfg,me,pode,toast,abrir}=ctx;const [st,setSt]=useState('nova');const [ver,setVer]=useState(null);
  const lista=solicitacoes.filter(x=>st==='todas'||x.status===st).sort((a,b)=>(b.criadoEm||'').localeCompare(a.criadoEm||''));
@@ -3827,7 +3832,8 @@ function SolicitacaoDetalhe({db,id,solicitacoes=[],clientes,pedidos,produtos,cfg
    <div className="card pad" style=${{display:'grid',gap:4}}><div className="row between sm"><span className="mut">Metros (montagem no rolo de ${num(x.larguraRolo,0)} cm)</span><b className="tab">${num(x.metros)} m</b></div><div className="row between sm"><span className="mut">Preço por metro (${{tabela:'tabela',faixa:'faixa',cliente:'preço do cliente',promocao:'promoção do cliente'}[x.precoOrigem]||''})</span><span className="tab">${moeda(x.preco)}</span></div>
     <div className="row between sm"><span className="mut">Impressão</span><span className="tab">${moeda(x.subtotal)}</span></div><div className="row between sm"><span className="mut">${x.entrega==='envio'?'Frete '+(x.frete?x.frete.empresa+' '+x.frete.servico+' ('+x.frete.prazo+' dias)':'(a cotar)'):'Retirada na loja'}</span><span className="tab">${x.frete?moeda(x.frete.preco):'—'}</span></div><div className="row between"><b>Total</b><b className="tab">${moeda(x.total)}</b></div></div></div>
   <div><b>Artes</b><div className="grid g4" style=${{marginTop:8}}>${(x.arquivos||[]).map(a=>html`<div key=${a.path} className="card" style=${{padding:8}}><div style=${{height:110,borderRadius:8,display:'grid',placeItems:'center',overflow:'hidden',background:'repeating-conic-gradient(#e5e5e5 0 25%,#fff 0 50%) 0 0/14px 14px'}}>${urls[a.path]?html`<img src=${urls[a.path]} alt=${a.nome} style=${{maxWidth:'100%',maxHeight:'100%'}}/>`:html`<span className="sm mut">${ONLINE()?'carregando…':'prévia no site'}</span>`}</div>
-   <div className="sm" style=${{marginTop:6,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title=${a.nome}>${a.nome}</div><div className="sm mut">${num(a.larguraCm,1)} × ${num(a.alturaCm,1)} cm · ${a.qtd}× · ${a.dpi} DPI</div>${urls[a.path]&&html`<a className="btn sm" style=${{marginTop:6}} href=${urls[a.path]} target="_blank" rel="noreferrer" download=${a.nome}><${Ic} n="dl" s=${13}/>Baixar</a>`}</div>`)}</div></div>
+   <div className="sm" style=${{marginTop:6,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title=${a.nome}>${a.nome}</div><div className="sm mut">${num(a.larguraCm,1)} × ${num(a.alturaCm,1)} cm · ${a.qtd}× · ${a.dpi} DPI</div>${ONLINE()&&html`<button className="btn sm" style=${{marginTop:6}} onClick=${()=>baixarArte(a,toast)}><${Ic} n="dl" s=${13}/>Baixar PNG</button>`}</div>`)}</div>
+   ${ONLINE()&&(x.arquivos||[]).length>1&&html`<button className="btn" style=${{marginTop:10}} onClick=${()=>baixarTodas(x.arquivos,toast)}><${Ic} n="dl" s=${15}/>Baixar todas as artes (${(x.arquivos||[]).length})</button>`}</div>
   ${x.obs&&html`<div className="card pad sm"><b>Observações do cliente:</b> ${x.obs}</div>`}
   ${x.status==='convertida'&&html`<div className="card pad row between"><span>Virou o pedido <b>#${x.pedidoNumero}</b></span><button className="btn sm" onClick=${()=>{onClose();abrir('pedido',x.pedidoId)}}>Abrir pedido</button></div>`}
   ${x.status==='recusada'&&html`<div className="sm" style=${{color:'var(--red2)'}}>Recusada${x.motivo?': '+x.motivo:''}</div>`}
