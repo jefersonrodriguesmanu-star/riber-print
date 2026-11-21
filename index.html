@@ -2884,11 +2884,12 @@ function Dashboard({db,pedidos,clientes,cfg,pode,abrir,ir,impressoes=[],insumos=
   </div></div>`}
 
 /* ---------------- pedidos ---------------- */
-function Pedidos({pedidos,cfg,abrir,pode,setForm,toast}){
- const [q,setQ]=useState('');const [fin,setFin]=useState('');const [pr,setPr]=useState('');const [ini,setIni]=useState('');const [fim,setFim]=useState('');const [atr,setAtr]=useState(false);const [lim,setLim]=useState(60);
+function Pedidos({pedidos,clientes=[],cfg,abrir,pode,setForm,toast}){
+ const [cliF,setCliF]=useState('');const [q,setQ]=useState('');const [fin,setFin]=useState('');const [pr,setPr]=useState('');const [ini,setIni]=useState('');const [fim,setFim]=useState('');const [atr,setAtr]=useState(false);const [lim,setLim]=useState(60);
  useEffect(()=>{try{const d=sessionStorage.getItem('rp:dia');if(d){setIni(d);setFim(d);sessionStorage.removeItem('rp:dia')}}catch(e){}},[]);
  const et=Object.fromEntries(cfg.etapas.map(e=>[e.id,e]));
  const lista=pedidos.filter(p=>{const t=norm(q.trim());if(t&&!(String(p.numero)===dig(q)||norm(p.clienteNome).includes(t)))return false;
+  if(cliF==='__loja'&&!p.interno)return false;if(cliF==='__vendas'&&p.interno)return false;if(cliF&&cliF[0]!=='_'&&p.clienteId!==cliF)return false;
   if(fin&&p.statusFin!==fin)return false;if(pr&&p.statusProd!==pr)return false;if(ini&&p.dia<ini)return false;if(fim&&p.dia>fim)return false;
   if(atr&&!(p.previsao&&new Date(p.previsao)<new Date()&&['aguardando','em_producao'].includes(p.statusProd)))return false;return true});
  const exportar=async()=>{const dl=await claude.use('downloads');if(!dl)return toast('Download indisponível nesta visualização',1);
@@ -2913,11 +2914,12 @@ function Pedidos({pedidos,cfg,abrir,pode,setForm,toast}){
   <div className="card">
    <div className="row pad" style=${{borderBottom:'1px solid var(--line)'}}>
     <input className="in" style=${{flex:'1 1 220px'}} placeholder="Nº do pedido ou cliente" value=${q} onChange=${e=>setQ(e.target.value)}/>
+    <select className="in" style=${{width:210}} value=${cliF} onChange=${e=>setCliF(e.target.value)}><option value="">Todos os clientes</option><option value="__vendas">Só vendas (sem loja própria)</option><option value="__loja">Só loja própria (RIBER PRINT)</option>${[...new Set(pedidos.map(p=>p.clienteId))].map(id=>clientes.find(c=>c.id===id)).filter(Boolean).sort((a,b)=>a.nome.localeCompare(b.nome)).map(c=>html`<option key=${c.id} value=${c.id}>${c.nome}</option>`)}</select>
     <input type="date" className="in" style=${{width:155}} value=${ini} onChange=${e=>setIni(e.target.value)} title="Data inicial"/><input type="date" className="in" style=${{width:155}} value=${fim} onChange=${e=>setFim(e.target.value)} title="Data final"/>
     <select className="in" style=${{width:150}} value=${fin} onChange=${e=>setFin(e.target.value)}><option value="">Financeiro</option>${Object.entries(FIN).map(([k,v])=>html`<option key=${k} value=${k}>${v[0]}</option>`)}</select>
     <select className="in" style=${{width:150}} value=${pr} onChange=${e=>setPr(e.target.value)}><option value="">Produção</option>${Object.entries(PROD).map(([k,v])=>html`<option key=${k} value=${k}>${v[0]}</option>`)}</select>
     <label className="row sm mut" style=${{gap:6}}><input type="checkbox" checked=${atr} onChange=${e=>setAtr(e.target.checked)}/>Atrasados</label>
-    ${(q||fin||pr||ini||fim||atr)&&html`<button className="btn sm" onClick=${()=>{setQ('');setFin('');setPr('');setIni('');setFim('');setAtr(false)}}>Limpar</button>`}</div>
+    ${(q||cliF||fin||pr||ini||fim||atr)&&html`<button className="btn sm" onClick=${()=>{setQ('');setCliF('');setFin('');setPr('');setIni('');setFim('');setAtr(false)}}>Limpar</button>`}</div>
    ${lista.length===0?html`<${Empty} t="Nenhum pedido encontrado" s=${pedidos.length?'Ajuste os filtros.':'Crie o primeiro pedido.'} a=${pode('criar')&&!pedidos.length&&html`<button className="btn p" onClick=${()=>setForm({t:'pedido'})}>Novo pedido</button>`}/>`:html`
    <div className="scroll"><table><thead><tr><th>Pedido</th><th>Cliente</th><th className="hide-s">Itens</th><th>Etapa</th><th className="hide-s">Entrega</th>${pode('fat')&&html`<th className="r">Total</th>`}<th>Financeiro</th></tr></thead><tbody>
    ${lista.slice(0,lim).map(p=>{const e=et[p.etapaId];const at=p.previsao&&new Date(p.previsao)<new Date()&&['aguardando','em_producao'].includes(p.statusProd);
