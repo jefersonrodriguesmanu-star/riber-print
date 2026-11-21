@@ -2679,7 +2679,8 @@ function normalizar(p,quem){
   if(vals.length&&vals.every(v=>v==='concluida')&&['aguardando','em_producao'].includes(statusProd))statusProd='pronto';
   else if(vals.some(v=>v==='em_andamento'||v==='concluida')&&statusProd==='aguardando')statusProd='em_producao'}
  if(p.cancelado){statusProd='cancelado';for(const s in ordens)if(ordens[s]!=='concluida')delete ordens[s]}
- return{...p,totais:t,total:t.total,pago,saldo:r2(t.total-pago),statusFin:fin,ordens,statusProd,historico:hist,dia:diaSP(p.criadoEm)}}
+ const producaoEm=p.producaoEm||(EM_PROD.includes(statusProd)&&!EM_PROD.includes(p.statusProd||'aguardando')?new Date().toISOString():undefined);
+ return{...p,...(producaoEm?{producaoEm}:{}),totais:t,total:t.total,pago,saldo:r2(t.total-pago),statusFin:fin,ordens,statusProd,historico:hist,dia:diaSP(p.criadoEm)}}
 /* Reservas de vestuário: calculadas a partir dos pedidos em aberto (nunca duplicam). */
 function reservas(pedidos,excetoId){const m={};for(const p of pedidos){if(p.cancelado||p.baixaEstoque||p.id===excetoId)continue;for(const i of p.itens||[])if(i.varianteId)m[i.varianteId]=(m[i.varianteId]||0)+i.qtd}return m}
 
@@ -3131,8 +3132,8 @@ function PedidoDetalhe({db,id,pedidos,clientes,produtos,cfg,me,pode,toast,onClos
    </div></div>
   ${dlg==='pix'&&html`<${PixDlg} cfg=${cfg} valor=${p.saldo} txid=${'PED'+p.numero} titulo=${'PIX do pedido #'+p.numero} onClose=${()=>setDlg(null)}/>`}
   ${dlg==='pag'&&html`<${PagamentoDlg} p=${p} onClose=${()=>setDlg(null)} onOk=${x=>{salvar({...p,pagamentos:[...(p.pagamentos||[]),{...x,id:uid(),por:me,registradoEm:new Date().toISOString()}],historico:[...p.historico,{em:new Date().toISOString(),por:me,tipo:'pagamento',obs:'Pagamento de '+moeda(x.valor)+' ('+FORMAS[x.forma]+')'}]},'Pagamento registrado');setDlg(null)}}/>`}
-  ${dlg==='cancel'&&html`<${MotivoDlg} titulo=${'Cancelar pedido #'+p.numero} aviso=${p.pago>0?'Este pedido tem '+moeda(p.pago)+' recebidos. Estorne os pagamentos antes de cancelar.':'As reservas de estoque serão liberadas.'} bloqueado=${p.pago>0} onClose=${()=>setDlg(null)}
-    onOk=${m=>{const ce=cfg.etapas.find(e=>e.cancela);salvar({...p,cancelado:{em:new Date().toISOString(),por:me,motivo:m},etapaId:ce?ce.id:p.etapaId,etapaDesde:new Date().toISOString(),historico:[...p.historico,{em:new Date().toISOString(),por:me,tipo:'cancelamento',obs:'Cancelado: '+m}]},'Pedido cancelado');setDlg(null)}}/>`}
+  ${dlg==='cancel'&&html`<${MotivoDlg} titulo=${'Cancelar pedido #'+p.numero} aviso=${p.pago>0?'Este pedido tem '+moeda(p.pago)+' recebidos. Estorne os pagamentos antes de cancelar.':'As reservas de estoque serão liberadas.'} bloqueado=${p.pago>0} onClose=${()=>setDlg(null)} opcao=${Object.keys(p.consumoLancado||{}).length?{label:'Devolver a matéria-prima ao estoque',desc:'Marque se o pedido não chegou a ser impresso. O filme, a tinta e o pó abatidos voltam para o estoque.',padrao:true}:null}
+    onOk=${(m,dev)=>{const ce=cfg.etapas.find(e=>e.cancela);salvar({...p,...(dev?{estornoConsumo:{em:new Date().toISOString(),por:me}}:{}),cancelado:{em:new Date().toISOString(),por:me,motivo:m},etapaId:ce?ce.id:p.etapaId,etapaDesde:new Date().toISOString(),historico:[...p.historico,{em:new Date().toISOString(),por:me,tipo:'cancelamento',obs:'Cancelado: '+m}]},'Pedido cancelado');setDlg(null)}}/>`}
   ${dlg&&dlg.estorno&&html`<${MotivoDlg} titulo="Estornar pagamento" aviso="O valor deixa de contar como recebido. O registro fica no histórico." onClose=${()=>setDlg(null)}
     onOk=${m=>{salvar({...p,pagamentos:p.pagamentos.map(x=>x.id===dlg.estorno?{...x,estornado:true,motivoEstorno:m,estornadoEm:new Date().toISOString(),estornadoPor:me}:x),historico:[...p.historico,{em:new Date().toISOString(),por:me,tipo:'estorno',obs:'Estorno: '+m}]},'Pagamento estornado');setDlg(null)}}/>`}
  <//>`}
@@ -3142,9 +3143,10 @@ function PagamentoDlg({p,onClose,onOk}){const [v,setV]=useState(String(p.saldo))
   <${F} l="Valor (R$)"><input className="in tab" autoFocus inputMode="decimal" value=${v} onChange=${e=>setV(e.target.value)}/><//><${F} l="Data"><input type="date" className="in" value=${d} onChange=${e=>setD(e.target.value)}/><//>
   <${F} l="Forma"><select className="in" value=${f} onChange=${e=>setF(e.target.value)}>${Object.entries(FORMAS).map(([k,x])=>html`<option key=${k} value=${k}>${x}</option>`)}</select><//><${F} l="Observação"><input className="in" value=${o} onChange=${e=>setO(e.target.value)}/><//></div>
   <div className="row between" style=${{marginTop:14}}><span className="sm" style=${{color:'var(--red2)'}}>${erro||''}</span><button className="btn p" disabled=${!!erro} onClick=${()=>onOk({valor:r2(val),forma:f,data:d,obs:o})}>Confirmar</button></div><//>`}
-function MotivoDlg({titulo,aviso,onClose,onOk,bloqueado}){const [m,setM]=useState('');return html`<${Modal} title=${titulo} sub=${aviso} onClose=${onClose}>
+function MotivoDlg({titulo,aviso,onClose,onOk,bloqueado,opcao}){const [m,setM]=useState('');const [op,setOp]=useState(opcao?!!opcao.padrao:false);return html`<${Modal} title=${titulo} sub=${aviso} onClose=${onClose}>
  <${F} l="Motivo (obrigatório)"><textarea className="in" autoFocus value=${m} disabled=${bloqueado} onChange=${e=>setM(e.target.value)}></textarea><//>
- <div className="row" style=${{justifyContent:'flex-end',marginTop:12}}><button className="btn" onClick=${onClose}>Voltar</button><button className="btn p" disabled=${bloqueado||!m.trim()} onClick=${()=>onOk(m.trim())}>Confirmar</button></div><//>`}
+ ${opcao&&html`<label className="row sm" style=${{gap:8,marginTop:10,alignItems:'flex-start'}}><input type="checkbox" checked=${op} disabled=${bloqueado} onChange=${e=>setOp(e.target.checked)} style=${{marginTop:3}}/><span><b>${opcao.label}</b>${opcao.desc?html`<div className="mut">${opcao.desc}</div>`:''}</span></label>`}
+ <div className="row" style=${{justifyContent:'flex-end',marginTop:12}}><button className="btn" onClick=${onClose}>Voltar</button><button className="btn p" disabled=${bloqueado||!m.trim()} onClick=${()=>onOk(m.trim(),op)}>Confirmar</button></div><//>`}
 
 /* ---------------- kanban ---------------- */
 async function moverPedido({db,p,etapa,me,pode,produtos,toast,abrir}){
@@ -3156,6 +3158,7 @@ async function moverPedido({db,p,etapa,me,pode,produtos,toast,abrir}){
  const agora=new Date().toISOString();let np={...p,etapaId:etapa.id,etapaDesde:agora,historico:[...(p.historico||[]),{em:agora,por:me,tipo:'etapa',de:p.etapaId,para:etapa.id}]};
  if(etapa.cancela){if(!pode('cancelar'))return toast('Sem permissão para cancelar.',1);if(p.pago>0)return toast('Estorne os pagamentos antes de cancelar.',1);np.cancelado={em:agora,por:me,motivo:'Movido para '+etapa.nome}}
  if(etapa.status&&!etapa.cancela)np.statusProd=etapa.status;
+ if(!p.producaoEm&&EM_PROD.includes(np.statusProd)&&!EM_PROD.includes(p.statusProd||'aguardando'))np.producaoEm=agora;
  try{
   if(np.statusProd==='entregue'&&!p.baixaEstoque){ // baixa definitiva do vestuário na entrega
    const porProd={};for(const i of p.itens)if(i.varianteId)(porProd[i.produtoId]=porProd[i.produtoId]||[]).push(i);
@@ -3382,7 +3385,8 @@ const grupoOk=(tipo,g)=>g==='geral'||(tipo==='textil'&&g==='dtf_textil')||(tipo=
 /* Consumo que o registro DEVE ter lançado: ficha técnica × metros impressos (descartes incluídos); o consumo real informado substitui o estimado. */
 /* Baixa pelos pedidos: quando ligada, cada pedido com a produção concluída abate a matéria-prima pela ficha;
    os registros da Central de impressão passam a abater só os metros descartados (perdas), para não contar duas vezes. */
-const BAIXA_PADRAO={ativo:true,desde:'2026-11-20T22:44:00.000Z',textil:'',uv:''};
+const BAIXA_PADRAO={ativo:true,desde:'2026-11-20T22:44:00.000Z',desdeProducao:'2026-11-21T20:40:00.000Z',textil:'',uv:''};
+const EM_PROD=['em_producao','pronto','entregue'];
 let BAIXA=BAIXA_PADRAO;
 function consumoDesejado(reg,maquinas,insumos){if(reg.cancelado)return{};const m=maquinas.find(x=>x.id===reg.maquinaId);const pf=(m&&m.perfis||[]).find(p=>p.id===reg.perfilId);const out={};
  const porPedido=BAIXA&&BAIXA.ativo&&reg.criadoEm>=BAIXA.desde;const base=porPedido?pn(reg.descartados):pn(reg.metros);
@@ -3391,17 +3395,17 @@ function consumoDesejado(reg,maquinas,insumos){if(reg.cancelado)return{};const m
  return out}
 function perfilBaixa(tipo,maquinas,cfgB){const sel=(cfgB||{})[tipo];if(sel){const [mi,pi]=sel.split('|');const m=maquinas.find(x=>x.id===mi);const pf=m&&(m.perfis||[]).find(x=>x.id===pi);if(pf)return pf}
  const ms=maquinas.filter(x=>(x.tipo||'textil')===tipo);const m=ms.find(x=>x.id==='mq-scalle')||ms[0];return m&&(m.perfis||[])[0]||null}
-function consumoPedido(p,maquinas,insumos,cfgB){const B={...BAIXA_PADRAO,...(cfgB||{})};if(!B.ativo||p.cancelado||!(p.criadoEm>=B.desde)||!['pronto','entregue'].includes(p.statusProd))return{};const out={};
+function consumoPedido(p,maquinas,insumos,cfgB){const B={...BAIXA_PADRAO,...(cfgB||{})};if(!B.ativo||p.cancelado||!EM_PROD.includes(p.statusProd)||!(p.producaoEm&&p.producaoEm>=(B.desdeProducao||B.desde)))return{};const out={};
  const mp=p.maquinaId&&maquinas.find(x=>x.id===p.maquinaId);const pfp=mp&&((mp.perfis||[]).find(x=>x.id===p.perfilId)||(mp.perfis||[])[0]);
  for(const [tipo,met] of [['textil',p.totais?.mt||0],['uv',p.totais?.mu||0]]){if(!(met>0))continue;const pf=pfp&&(mp.tipo||'textil')===tipo?pfp:perfilBaixa(tipo,maquinas,B);
   for(const f of (pf&&pf.ficha)||[]){const ins=insumos.find(i=>i.id===f.insumoId);if(!ins||!grupoOk(tipo,ins.grupo))continue;out[f.insumoId]=r3((out[f.insumoId]||0)+pn(f.qtd)*met)}}
  return out}
 /* O que já foi impresso não volta ao estoque (o material impresso é descartado): só abate a mais, nunca devolve. */
-function alvoPedido(p,ctx){const des=consumoPedido(p,ctx.maquinas,ctx.insumos,ctx.cfgB);const l=p.consumoLancado||{};const out={...l};for(const [k,v] of Object.entries(des))out[k]=Math.max(Number(l[k]||0),v);return out}
+function alvoPedido(p,ctx){if(p.cancelado&&p.estornoConsumo)return{};const des=consumoPedido(p,ctx.maquinas,ctx.insumos,ctx.cfgB);const l=p.consumoLancado||{};const out={...l};for(const [k,v] of Object.entries(des))out[k]=Math.max(Number(l[k]||0),v);return out}
 async function aplicarConsumoPedido(db,p,ctx){const des=alvoPedido(p,ctx);const lanc={...(p.consumoLancado||{})};let mudou=false;
  for(const id of new Set([...Object.keys(des),...Object.keys(lanc)])){const antes=Number(lanc[id]||0),alvo=Number(des[id]||0);const dif=r3(alvo-antes);if(dif===0)continue;
   await movimentarInsumo(db,id,-dif,{tipo:dif>0?'consumo':'estorno',ref:'Pedido #'+p.numero,lid:'ped:'+p.id+':'+id+':'+antes+'>'+alvo,por:ctx.me});
-  if(alvo)lanc[id]=alvo;else delete lanc[id];mudou=true;await db.doc('pedidos/'+p.id).update({consumoLancado:lanc})}
+  if(alvo)lanc[id]=alvo;else delete lanc[id];mudou=true;await db.doc('pedidos/'+p.id).update({consumoLancado:lanc,...(!p.consumoEm&&alvo>antes?{consumoEm:new Date().toISOString()}:{}),...(p.cancelado&&p.estornoConsumo&&!Object.keys(lanc).length?{estornadoEm:new Date().toISOString()}:{})})}
  return mudou}
 const precisaBaixa=(p,ctx)=>{const des=alvoPedido(p,ctx);const l=p.consumoLancado||{};for(const k of new Set([...Object.keys(des),...Object.keys(l)]))if(r3(Number(des[k]||0)-Number(l[k]||0))!==0)return true;return false};
 /* Movimenta um insumo com trava (lease) e chave de idempotência: o mesmo lançamento nunca é aplicado duas vezes. */
@@ -3447,18 +3451,61 @@ function ListaCompras({insumos,cfg,toast,onClose,onGerar}){const [cob,setCob]=us
    ${base.map(i=>html`<tr key=${i.id}><td><b>${i.nome}</b><div className="sm mut">${GRUPOS[i.grupo]}${i.fornecedor?' · '+i.fornecedor:''}</div></td><td className="r tab" style=${{color:i.zerado||i.baixo?'var(--red2)':''}}>${num(i.estoque,2)} ${i.unidade}</td><td className="r tab">${num(i.dia,3)}</td><td className="r tab">${i.dias==null?'—':num(i.dias,0)+' d'}</td>
     <td className="r"><input className="in tab" style=${{width:100,textAlign:'right'}} value=${q[i.id]??''} onChange=${e=>setQ({...q,[i.id]:e.target.value})}/> <span className="sm mut">${i.unidade}</span></td><td className="r tab">${moeda(pn(q[i.id])*Number(i.ultimoPreco||i.custoMedio||0))}</td></tr>`)}</tbody></table></div>
    <div className="row between" style=${{marginTop:12}}><b className="tab">Total estimado: ${moeda(total)}</b><div className="row"><button className="btn" onClick=${copiar}>Copiar texto</button><a className="btn" href=${'https://wa.me/?text='+encodeURIComponent(texto.replace(/\\n/g,'\n'))} target="_blank" rel="noreferrer"><${Ic} n="wa" s=${14}/>WhatsApp</a><button className="btn" onClick=${imprimir}><${Ic} n="print" s=${14}/>${ONLINE()?'Imprimir':'Baixar'}</button>${onGerar&&html`<button className="btn p" onClick=${()=>onGerar(itens.map(i=>({insumoId:i.id,qtd:pn(q[i.id]),custo:Number(i.ultimoPreco||i.custoMedio||0)})))}>Gerar pedido de compra</button>`}</div></div>`}<//>`}
+/* ---- relatório de consumo de matéria-prima por período + devolução de pedidos cancelados ---- */
+function periodoConsumo(k){const h=diaSP();const m=h.slice(0,8);const [y,mm]=h.split('-').map(Number);const dm=new Date(y,mm-2,1);const mp=dm.getFullYear()+'-'+String(dm.getMonth()+1).padStart(2,'0');const ult=new Date(y,mm-1,0).getDate();
+ return {hoje:[h,h],ontem:[addD(h,-1),addD(h,-1)],d7:[addD(h,-6),h],d30:[addD(h,-29),h],mes:[m+'01',h],mes_ant:[mp+'-01',mp+'-'+String(ult).padStart(2,'0')],ano:[h.slice(0,4)+'-01-01',h]}[k]}
+function consumoPeriodo({pedidos,impressoes,insumos,maquinas,de,ate}){const por={},dias={};let metros=0,nPed=0;
+ const add=(id,q,origem,dia)=>{if(!q)return;const x=por[id]||(por[id]={ped:0,imp:0});x[origem]+=q;const ins=insumos.find(i=>i.id===id);dias[dia]=(dias[dia]||0)+q*Number(ins?.custoMedio||0)};
+ for(const p of pedidos){const l=p.consumoLancado||{};if(!Object.keys(l).length||(p.cancelado&&p.estornoConsumo))continue;const dia=diaSP(p.consumoEm||p.etapaDesde||p.criadoEm);if(dia<de||dia>ate)continue;
+  nPed++;metros+=(p.totais?.mt||0)+(p.totais?.mu||0);for(const [k,v] of Object.entries(l))add(k,Number(v)||0,'ped',dia)}
+ for(const r of impressoes){if(r.cancelado)continue;const dia=r.data||diaSP(r.criadoEm);if(dia<de||dia>ate)continue;for(const [k,v] of Object.entries(consumoDesejado(r,maquinas,insumos)))add(k,Number(v)||0,'imp',dia)}
+ const linhas=Object.entries(por).map(([id,x])=>{const ins=insumos.find(i=>i.id===id)||{nome:'(insumo removido)',unidade:''};const q=r3(x.ped+x.imp);return{id,ins,ped:r3(x.ped),imp:r3(x.imp),q,custo:r2(q*Number(ins.custoMedio||0))}}).sort((a,b)=>b.custo-a.custo||b.q-a.q);
+ return{linhas,custo:r2(sum(linhas,l=>l.custo)),metros:r2(metros),nPed,dias}}
+function RelatorioConsumo({pedidos=[],impressoes=[],insumos,maquinas,toast}){const [per,setPer]=useState('hoje');const [de,setDe]=useState(diaSP());const [ate,setAte]=useState(diaSP());const [grp,setGrp]=useState('');
+ const escolher=k=>{setPer(k);const r=periodoConsumo(k);if(r){setDe(r[0]);setAte(r[1])}};
+ const R=useMemo(()=>consumoPeriodo({pedidos,impressoes,insumos,maquinas,de,ate}),[pedidos,impressoes,insumos,maquinas,de,ate]);
+ const linhas=R.linhas.filter(l=>!grp||l.ins.grupo===grp);const custo=sum(linhas,l=>l.custo);
+ const diasL=Object.entries(R.dias).sort((a,b)=>a[0].localeCompare(b[0]));const maxD=Math.max(1,...diasL.map(d=>d[1]));
+ const csv=()=>{const rows=[['Matéria-prima','Grupo','Unidade','Pedidos','Impressões/descartes','Total','Custo médio','Custo total'],...linhas.map(l=>[l.ins.nome,GRUPOS[l.ins.grupo]||'',(UNID[l.ins.unidade]||['',l.ins.unidade||''])[1],l.ped,l.imp,l.q,Number(l.ins.custoMedio||0),l.custo])];
+  const t=rows.map(r=>r.map(c=>typeof c==='number'?String(c).replace('.',','):'"'+String(c).replace(/"/g,'""')+'"').join(';')).join('\n');baixarBlob(new Blob(['﻿'+t],{type:'text/csv'}),'consumo-materia-prima-'+de+'-a-'+ate+'.csv')};
+ return html`<div style=${{display:'grid',gap:12}}>
+  <div className="card pad" style=${{display:'grid',gap:10}}><div className="row" style=${{gap:6,flexWrap:'wrap'}}>${[['hoje','Hoje'],['ontem','Ontem'],['d7','Últimos 7 dias'],['d30','Últimos 30 dias'],['mes','Este mês'],['mes_ant','Mês passado'],['ano','Este ano']].map(([k,l])=>html`<button key=${k} className=${'btn sm'+(per===k?' p':'')} onClick=${()=>escolher(k)}>${l}</button>`)}<button className=${'btn sm'+(per==='pers'?' p':'')} onClick=${()=>setPer('pers')}>Personalizado</button></div>
+   <div className="row" style=${{gap:10,flexWrap:'wrap',alignItems:'flex-end'}}><${F} l="De"><input type="date" className="in" value=${de} onChange=${e=>{setDe(e.target.value);setPer('pers')}}/><//><${F} l="Até"><input type="date" className="in" value=${ate} onChange=${e=>{setAte(e.target.value);setPer('pers')}}/><//>
+    <${F} l="Grupo"><select className="in" value=${grp} onChange=${e=>setGrp(e.target.value)}><option value="">Todos</option>${Object.entries(GRUPOS).map(([k,l])=>html`<option key=${k} value=${k}>${l}</option>`)}</select><//><div className="spacer"></div><button className="btn" disabled=${!linhas.length} onClick=${csv}><${Ic} n="dl" s=${15}/>Exportar planilha</button></div></div>
+  <div className="grid g4"><div className="card kpi"><div className="t">Custo da matéria-prima</div><div className="v tab">${moeda(custo)}</div><div className="sm mut">${dBR(de)}${de!==ate?' a '+dBR(ate):''}</div></div>
+   <div className="card kpi"><div className="t">Metros produzidos (pedidos)</div><div className="v tab">${num(R.metros)} m</div><div className="sm mut">${R.nPed} pedido(s) com baixa</div></div>
+   <div className="card kpi"><div className="t">Custo por metro</div><div className="v tab">${R.metros?moeda(custo/R.metros):'—'}</div><div className="sm mut">matéria-prima ÷ metros</div></div>
+   <div className="card kpi"><div className="t">Itens consumidos</div><div className="v tab">${linhas.length}</div><div className="sm mut">tipos de matéria-prima</div></div></div>
+  <div className="card">${linhas.length===0?html`<${Empty} t="Nenhum consumo nesse período" s="O consumo entra quando o pedido vai para produção e quando há registro de impressão ou descarte."/>`:html`<div className="scroll"><table><thead><tr><th>Matéria-prima</th><th>Grupo</th><th className="r">Pedidos</th><th className="r">Impressões e descartes</th><th className="r">Total consumido</th><th className="r">Custo médio</th><th className="r">Custo</th></tr></thead><tbody>
+   ${linhas.map(l=>{const u=(UNID[l.ins.unidade]||['',l.ins.unidade||''])[1];return html`<tr key=${l.id}><td><b>${l.ins.nome}</b></td><td className="sm">${GRUPOS[l.ins.grupo]||'—'}</td><td className="r tab">${num(l.ped,3)} ${u}</td><td className="r tab">${num(l.imp,3)} ${u}</td><td className="r tab b">${num(l.q,3)} ${u}</td><td className="r tab sm">${moeda(l.ins.custoMedio||0)}</td><td className="r tab b">${moeda(l.custo)}</td></tr>`})}
+   <tr><td colSpan="6"><b>Total</b></td><td className="r tab b">${moeda(custo)}</td></tr></tbody></table></div>`}</div>
+  ${diasL.length>1&&html`<div className="card pad"><b>Custo por dia</b><div style=${{display:'flex',alignItems:'flex-end',gap:3,height:140,marginTop:10,overflowX:'auto'}}>${diasL.map(([d,v])=>html`<div key=${d} title=${dBR(d)+': '+moeda(v)} style=${{flex:'1 0 10px',minWidth:10,maxWidth:40,display:'flex',flexDirection:'column',alignItems:'center',gap:4}}><div style=${{width:'100%',height:Math.max(2,v/maxD*110),background:'var(--brand,#a3089a)',borderRadius:'4px 4px 0 0'}}></div>${diasL.length<=31&&html`<span className="mut" style=${{fontSize:10}}>${d.slice(8)}</span>`}</div>`)}</div></div>`}
+  <div className="sm mut">Pedidos: o que foi abatido automaticamente quando o pedido entrou em produção. Impressões e descartes: registros da Central de impressão (desperdício). Pedidos cancelados com a matéria-prima devolvida não entram.</div></div>`}
+function DevolucoesEstoque({db,pedidos=[],insumos,me,pode,toast}){const [s,setS]=useState('');
+ const pend=pedidos.filter(p=>p.cancelado&&!p.estornoConsumo&&Object.keys(p.consumoLancado||{}).length).sort((a,b)=>String(b.cancelado.em||'').localeCompare(String(a.cancelado.em||'')));
+ const feitos=pedidos.filter(p=>p.cancelado&&p.estornoConsumo).sort((a,b)=>String(b.estornoConsumo.em||'').localeCompare(String(a.estornoConsumo.em||''))).slice(0,30);
+ const resumo=l=>Object.entries(l||{}).map(([k,v])=>{const i=insumos.find(x=>x.id===k);return(i?i.nome:'?')+' '+num(v,3)+' '+((UNID[i?.unidade]||['',i?.unidade||''])[1])}).join(' · ');
+ const custo=l=>sum(Object.entries(l||{}),([k,v])=>Number(v)*Number(insumos.find(x=>x.id===k)?.custoMedio||0));
+ const devolver=async p=>{if(!(pode('estoque')||pode('cancelar')))return toast('Sem permissão para mexer no estoque',1);if(!confirm('Devolver ao estoque a matéria-prima do pedido #'+p.numero+'?\n\n'+resumo(p.consumoLancado)))return;setS(p.id);
+  try{await db.doc('pedidos/'+p.id).update({estornoConsumo:{em:new Date().toISOString(),por:me},historico:[...(p.historico||[]),{em:new Date().toISOString(),por:me,tipo:'estoque',obs:'Matéria-prima devolvida ao estoque (pedido cancelado)'}]});toast('Pedido #'+p.numero+': matéria-prima volta ao estoque em instantes')}catch(e){toast('Erro: '+(e.message||e.code),1)}finally{setS('')}};
+ return html`<div style=${{display:'grid',gap:12}}>
+  <div className="card pad sm">Pedido cancelado depois de entrar em produção? Se ele <b>não chegou a ser impresso</b>, devolva aqui a matéria-prima que foi abatida. Se já foi impresso, não devolva: o material foi gasto. Ao cancelar um pedido, o sistema também pergunta se quer devolver.</div>
+  <div className="card"><div style=${{padding:'10px 14px',borderBottom:'1px solid var(--line)'}}><b>Cancelados com matéria-prima abatida (${pend.length})</b></div>
+   ${pend.length===0?html`<${Empty} t="Nada para devolver" s="Nenhum pedido cancelado com matéria-prima abatida."/>`:html`<div className="scroll"><table><thead><tr><th>Pedido</th><th>Cliente</th><th>Cancelado em</th><th>Matéria-prima abatida</th><th className="r">Custo</th><th></th></tr></thead><tbody>${pend.map(p=>html`<tr key=${p.id}><td><b>#${p.numero}</b></td><td>${p.clienteNome}</td><td className="sm">${dhBR(p.cancelado.em)}<div className="mut">${p.cancelado.motivo||''}</div></td><td className="sm" style=${{maxWidth:420}}>${resumo(p.consumoLancado)}</td><td className="r tab">${moeda(custo(p.consumoLancado))}</td>
+    <td><button className="btn sm p" disabled=${s===p.id} onClick=${()=>devolver(p)}>Devolver ao estoque</button></td></tr>`)}</tbody></table></div>`}</div>
+  ${feitos.length>0&&html`<div className="card"><div style=${{padding:'10px 14px',borderBottom:'1px solid var(--line)'}}><b>Devolvidos recentemente</b></div><div className="scroll"><table><thead><tr><th>Pedido</th><th>Cliente</th><th>Devolvido em</th><th>Situação</th></tr></thead><tbody>${feitos.map(p=>html`<tr key=${p.id}><td>#${p.numero}</td><td>${p.clienteNome}</td><td className="sm">${dhBR(p.estornoConsumo.em)}</td><td>${Object.keys(p.consumoLancado||{}).length?html`<${Badge} c="b-warn">Devolvendo…<//>`:html`<${Badge} c="b-ok">Devolvido ao estoque<//>`}</td></tr>`)}</tbody></table></div></div>`}</div>`}
 function Insumos(ctx){const {db,insumos,maquinas,impressoes,pode,me,toast,cfg}=ctx;const [compras,setCompras]=useState(false);const [novaOC,setNovaOC]=useState(null);
  const [g,setG]=useState('dtf_textil');const [dlg,setDlg]=useState(null);const [ver,setVer]=useState(null);
  const lista=insumos.filter(i=>i.grupo===g&&i.ativo!==false).sort((a,b)=>a.nome.localeCompare(b.nome));const lim=addD(diaSP(),-29);
  const consumo30=i=>-sum((i.movimentos||[]).filter(m=>(m.tipo==='consumo'||m.tipo==='estorno')&&diaSP(m.em)>=lim),m=>m.q);
  const perfis=maquinas.flatMap(m=>(m.perfis||[]).map(p=>({...p,maq:m}))).filter(p=>g==='geral'||(g==='dtf_textil'?p.maq.tipo==='textil':p.maq.tipo==='uv'));
  return html`<div>
-  <div className="row between" style=${{marginBottom:14}}><div><h1>Matéria-prima</h1><div className="sub">Estoques separados de DTF Têxtil e DTF UV. Cada pedido concluído abate o consumo pela ficha da máquina.</div></div>
+  <div className="row between" style=${{marginBottom:14}}><div><h1>Matéria-prima</h1><div className="sub">Estoques separados de DTF Têxtil e DTF UV. Cada pedido que entra em produção abate o consumo pela ficha da máquina.</div></div>
    <div className="row"><button className="btn" onClick=${()=>setCompras(true)}>Lista de compras</button>${pode('estoque')&&html`<button className="btn p" onClick=${()=>setDlg({t:'novo'})}><${Ic} n="plus"/>Novo insumo</button>`}</div></div>
   ${compras&&html`<${ListaCompras} insumos=${insumos} cfg=${cfg} toast=${toast} onClose=${()=>setCompras(false)} onGerar=${pode('estoque')?(its=>{setCompras(false);setNovaOC({itens:its})}):null}/>`}
   ${novaOC&&html`<${CompraForm} ...${ctx} c=${null} pre=${novaOC} onClose=${()=>setNovaOC(null)}/>`}
-  <div className="tabs" style=${{marginBottom:12}}>${Object.entries(GRUPOS).map(([k,l])=>html`<button key=${k} className=${g===k?'on':''} onClick=${()=>setG(k)}>${l}</button>`)}<button className=${g==='contagem'?'on':''} onClick=${()=>setG('contagem')}>Contagem de estoque</button></div>
-  ${g==='contagem'?html`<${ContagemEstoque} ...${ctx}/>`:html`<div>
+  <div className="tabs" style=${{marginBottom:12}}>${Object.entries(GRUPOS).map(([k,l])=>html`<button key=${k} className=${g===k?'on':''} onClick=${()=>setG(k)}>${l}</button>`)}<button className=${g==='contagem'?'on':''} onClick=${()=>setG('contagem')}>Contagem de estoque</button><button className=${g==='consumo'?'on':''} onClick=${()=>setG('consumo')}>Relatório de consumo</button><button className=${g==='devolucoes'?'on':''} onClick=${()=>setG('devolucoes')}>Devoluções${ctx.pedidos&&ctx.pedidos.filter(p=>p.cancelado&&!p.estornoConsumo&&Object.keys(p.consumoLancado||{}).length).length?' ('+ctx.pedidos.filter(p=>p.cancelado&&!p.estornoConsumo&&Object.keys(p.consumoLancado||{}).length).length+')':''}</button></div>
+  ${g==='consumo'?html`<${RelatorioConsumo} ...${ctx}/>`:g==='devolucoes'?html`<${DevolucoesEstoque} ...${ctx}/>`:g==='contagem'?html`<${ContagemEstoque} ...${ctx}/>`:html`<div>
   ${perfis.length>0&&html`<div className="grid g3" style=${{marginBottom:12}}>${perfis.map(p=>{const pv=previsaoPerfil(p,insumos,impressoes);return html`<div key=${p.id} className="card kpi"><div className="t">${p.maq.nome} · ${p.nome}</div>
    <div className="v tab">${pv.metros==null?'—':num(pv.metros,0)+' m'}</div><div className="sm mut">${pv.metros==null?'Cadastre a ficha de consumo na máquina':'possíveis com o estoque atual · limitado por '+pv.limitante.nome+(pv.dias!=null?' · ~'+num(pv.dias,1)+' dias no ritmo atual':'')}</div></div>`})}</div>`}
   <div className="card">${lista.length===0?html`<${Empty} t="Nenhum insumo neste estoque" s="Cadastre filme, tintas, pó adesivo e demais materiais." a=${pode('estoque')&&html`<button className="btn p" onClick=${()=>setDlg({t:'novo'})}>Novo insumo</button>`}/>`:html`
