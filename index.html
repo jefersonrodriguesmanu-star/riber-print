@@ -2568,6 +2568,23 @@ const UNID={metro_linear:['Metro linear','m'],metro_quadrado:['Metro quadrado','
 const FORMAS={pix:'PIX',dinheiro:'Dinheiro',cartao_credito:'Cartão de crédito',cartao_debito:'Cartão de débito',boleto:'Boleto',transferencia:'Transferência'};
 const CONDICOES={antecipado:'Pagamento antecipado',na_retirada:'Na retirada',diario:'Diário',semanal:'Semanal',quinzenal:'Quinzenal',mensal:'Mensal',personalizado:'Prazo personalizado'};
 const ENTREGA={retirada:'Retirada',entrega_local:'Entrega local',correios:'Correios',transportadora:'Transportadora'};
+/* descrição completa do pedido para o cliente aprovar (variável {detalhes} nas mensagens) */
+const MSG_APROV_ANTIGA='Olá, {cliente}! Segue a arte do pedido *#{pedido}* para aprovação. Podemos seguir com a produção?';
+function detalhesPedido(p,cfg){const L=[];const un=i=>(UNID[i.unidade]||['',i.unidade||''])[1];
+ L.push('*Itens do pedido:*');
+ for(const i of p.itens||[]){const sub=r2(i.qtd*i.preco-(Number(i.desconto)||0));
+  L.push('• *'+(i.descricao||i.nomeProduto||'Item')+'*');L.push('   '+num(i.qtd)+' '+un(i)+' × '+moeda(i.preco)+(Number(i.desconto)>0?' − desconto '+moeda(i.desconto):'')+' = *'+moeda(sub)+'*');
+  if(i.obs)L.push('   _'+String(i.obs).trim()+'_')}
+ const t=p.totais||totais(p.itens||[],p.frete,p.desconto,{cortesia:p.cortesia});const subt=r2((t.produtos||0)+(t.servicos||0));
+ const mt=(t.mt||0)+(t.mu||0);L.push('');if(mt>0)L.push('📏 Metragem de DTF: '+num(mt)+' m');
+ L.push('Subtotal: '+moeda(subt));if(Number(p.desconto)>0)L.push('Desconto: −'+moeda(p.desconto));
+ const ent=p.entrega||'retirada';L.push((ent==='retirada'?'🏬 Retirada na loja':ent==='entrega_local'?'🛵 Entrega RIBER PRINT':'📦 Envio: '+(p.freteServico||ENTREGA[ent]||'frete'))+(ent==='retirada'?'':': '+(Number(p.frete)>0?moeda(p.frete):'grátis')));
+ if(ent!=='retirada'&&p.endereco)L.push('📍 '+p.endereco);
+ L.push('*Total: '+(p.cortesia?'cortesia':moeda(p.total))+'*');
+ if(Number(p.pago)>0)L.push('Já pago: '+moeda(p.pago)+' · Falta: *'+moeda(p.saldo)+'*');
+ if(p.previsao)L.push('🗓️ Previsão: '+dBR(String(p.previsao).slice(0,10)));
+ if(p.obsCliente)L.push('📝 Observações: '+String(p.obsCliente).trim());
+ return L.join('\n')}
 const CANAIS={balcao:'Balcão',whatsapp:'WhatsApp',instagram:'Instagram',site:'Site',telefone:'Telefone',loja:'Loja própria',outro:'Outro'};
 const FIN={pendente:['Pendente','b-warn'],parcial:['Parcial','b-info'],pago:['Pago','b-ok'],faturado:['Faturado','b-vio'],cancelado:['Cancelado','b-red']};
 const PROD={aguardando:['Aguardando',''],em_producao:['Em produção','b-info'],pronto:['Pronto','b-ok'],entregue:['Entregue','b-ok'],cancelado:['Cancelado','b-red']};
@@ -2593,7 +2610,7 @@ const CONFIG_PADRAO={
  modelos:[
   {id:'recebido',nome:'Confirmar pedido recebido',texto:'Olá, {cliente}! Recebemos seu pedido *#{pedido}* na RIBER PRINT.\n\nProdutos: {itens}\nValor total: {valor}\n\nObrigado!'},
   {id:'arquivo',nome:'Solicitar arquivo',texto:'Olá, {cliente}! Para darmos andamento ao pedido *#{pedido}*, envie por aqui o arquivo da arte (PNG com fundo transparente, 300 DPI).'},
-  {id:'aprovacao',nome:'Solicitar aprovação',texto:'Olá, {cliente}! Segue a arte do pedido *#{pedido}* para aprovação. Podemos seguir com a produção?'},
+  {id:'aprovacao',nome:'Solicitar aprovação',texto:'Olá, {cliente}! Tudo bem? 😊\n\nSegue o resumo do seu pedido *#{pedido}* na RIBER PRINT para aprovação:\n\n{detalhes}\n\nEstá tudo certo? Responda *APROVADO* para seguirmos com a impressão. Se precisar mudar algo, é só nos avisar por aqui.'},
   {id:'pagamento',nome:'Solicitar pagamento',texto:'Olá, {cliente}! O pedido *#{pedido}* de *{valor}* aguarda pagamento (saldo {saldo}).\n\nChave PIX: {pix}\n\nPIX copia e cola (valor já preenchido):\n{pix_copia}'},
   {id:'pago',nome:'Confirmar pagamento',texto:'Olá, {cliente}! Confirmamos o pagamento do pedido *#{pedido}*. Obrigado!'},
   {id:'producao',nome:'Informar início da produção',texto:'Olá, {cliente}! Seu pedido *#{pedido}* entrou em produção.'},
@@ -3071,7 +3088,7 @@ function PedidoDetalhe({db,id,pedidos,clientes,produtos,cfg,me,pode,toast,onClos
  const et=cfg.etapas.find(e=>e.id===p.etapaId);const cli=clientes.find(c=>c.id===p.clienteId);
  const salvar=async(np,msg)=>{try{const {id:_x,...c}=normalizar(np,me);await db.doc('pedidos/'+p.id).set(c);msg&&toast(msg)}catch(e){toast('Erro ao salvar: '+(e.message||e.code),1)}};
  const itensTxt=(p.itens||[]).map(i=>num(i.qtd)+' '+UNID[i.unidade][1]+' '+i.descricao).join(', ');
- const vars={cliente:(p.clienteNome||'').split(' ')[0],pedido:p.numero,itens:itensTxt,valor:moeda(p.total),saldo:moeda(p.saldo),status:FIN[p.statusFin][0],pix:cfg.empresa.pix,pix_copia:pixCopiaCola(cfg.empresa,p.saldo,'PED'+p.numero),horario:cfg.empresa.horario};
+ const vars={cliente:(p.clienteNome||'').split(' ')[0],pedido:p.numero,itens:itensTxt,detalhes:detalhesPedido(p,cfg),valor:moeda(p.total),saldo:moeda(p.saldo),status:FIN[p.statusFin][0],pix:cfg.empresa.pix,pix_copia:pixCopiaCola(cfg.empresa,p.saldo,'PED'+p.numero),horario:cfg.empresa.horario};
  const whats=cli?.whatsapp||p.clienteWhats;const ops=Object.entries(p.ordens||{});const pctOp=ops.length?Math.round(ops.filter(o=>o[1]==='concluida').length/ops.length*100):0;
  const nome=k=>nomes[k]||(k===me?'Você':'Colaborador');
  const comprovante=async()=>{const dl=await claude.use('downloads');if(!dl)return toast('Download indisponível nesta visualização',1);const E=cfg.empresa;const esc=s=>String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
@@ -3126,7 +3143,7 @@ function PedidoDetalhe({db,id,pedidos,clientes,produtos,cfg,me,pode,toast,onClos
      ${(p.pagamentos||[]).map(x=>html`<div key=${x.id} className="row between card" style=${{padding:'7px 10px',opacity:x.estornado?.5:1}}><div><b className="tab">${moeda(x.valor)}</b><div className="sm mut">${dBR(x.data)} · ${FORMAS[x.forma]}${x.estornado?' · estornado: '+x.motivoEstorno:''}</div></div>
       ${!x.estornado&&pode('pagar')&&html`<button className="btn sm" onClick=${()=>setDlg({estorno:x.id})}>Estornar</button>`}</div>`)}</div></div>
     ${whats&&html`<div className="card pad"><h2>WhatsApp</h2><div className="sm mut" style=${{marginBottom:6}}>${fone(whats)} · abre a mensagem pronta</div><div style=${{display:'grid',gap:4}}>
-     ${cfg.modelos.map(m=>html`<a key=${m.id} className="btn sm" style=${{justifyContent:'flex-start',textDecoration:'none'}} href=${waLink(whats,preencher(m.texto,vars))} target="_blank" rel="noreferrer"><${Ic} n="wa" s=${14}/>${m.nome}</a>`)}</div></div>`}
+     ${cfg.modelos.map(m=>html`<a key=${m.id} className="btn sm" style=${{justifyContent:'flex-start',textDecoration:'none'}} href=${waLink(whats,preencher(m.id==='aprovacao'&&m.texto===MSG_APROV_ANTIGA?CONFIG_PADRAO.modelos.find(x=>x.id==='aprovacao').texto:m.texto,vars))} target="_blank" rel="noreferrer"><${Ic} n="wa" s=${14}/>${m.nome}</a>`)}</div></div>`}
     <div className="card pad" style=${{display:'grid',gap:5}}><h2>Entrega</h2><${L} k="Tipo" v=${ENTREGA[p.entrega]}/><${L} k="Previsão" v=${p.previsao?dhBR(p.previsao):'—'}/><${L} k="Pagamento" v=${FORMAS[p.forma]||'A definir'}/>
      ${p.endereco&&html`<div className="sm mut">${p.endereco}</div>`}${p.obsInterna&&html`<div className="sm" style=${{background:'color-mix(in oklab,var(--warn) 14%,transparent)',padding:8,borderRadius:8}}><b>Interno:</b> ${p.obsInterna}</div>`}${p.obsCliente&&html`<div className="sm" style=${{background:'var(--soft)',padding:8,borderRadius:8}}><b>Cliente:</b> ${p.obsCliente}</div>`}</div>
    </div></div>
@@ -5112,7 +5129,7 @@ function Config(ctx){const {db,cfg,owner,papel,toast}=ctx;
     <td><select className="in" value=${x.grupo} onChange=${e=>setC({...c,categorias:c.categorias.map((y,j)=>j===i?{...y,grupo:e.target.value}:y)})}><option value="impressao">Impressão</option><option value="vestuario">Vestuário</option><option value="servico">Serviço</option><option value="outros">Outros</option></select></td>
     <td><select className="in" value=${x.setor||''} onChange=${e=>setC({...c,categorias:c.categorias.map((y,j)=>j===i?{...y,setor:e.target.value}:y)})}><option value="">Nenhum</option>${Object.entries(SETORES).map(([k,v])=>html`<option key=${k} value=${k}>${v}</option>`)}</select></td></tr>`)}
    </tbody></table></div><div className="pad"><button className="btn" onClick=${()=>setC({...c,categorias:[...c.categorias,{id:'cat'+uid(),nome:'Nova categoria',grupo:'outros',setor:''}]})}><${Ic} n="plus" s=${14}/>Nova categoria</button></div></div>`}
-  ${aba==='modelos'&&html`<div style=${{display:'grid',gap:10}}><div className="sm mut">Variáveis: {cliente} {pedido} {itens} {valor} {saldo} {status} {pix} {horario}. Use *texto* para negrito.</div>
+  ${aba==='modelos'&&html`<div style=${{display:'grid',gap:10}}><div className="sm mut">Variáveis: {cliente} {pedido} {itens} {detalhes} (pedido completo: itens, preços, entrega e total) {valor} {saldo} {status} {pix} {horario}. Use *texto* para negrito.</div>
    <div className="card pad" style=${{display:'grid',gap:8}}><b>Mensagem de cobrança</b><div className="sm mut">Variáveis: {cliente} {empresa} {saldo} {pedidos} {desde} {pix} {pix_copia}</div>
     <textarea className="in" style=${{minHeight:140,fontFamily:'Geist Mono,monospace',fontSize:13}} value=${c.msgCobranca||MSG_COBRANCA} onChange=${e=>setC({...c,msgCobranca:e.target.value})}></textarea></div>
    <div className="card pad" style=${{display:'grid',gap:8}}><b>Mensagem de fechamento</b><div className="sm mut">Variáveis: {periodicidade} {empresa} {cliente} {inicio} {fim} {linhas} {metros} {valor} {saldo_linha} {vencimento} {pix} {pix_copia}</div>
