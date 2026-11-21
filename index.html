@@ -3788,7 +3788,7 @@ function ReceberCompra({db,c,insumos,me,toast,onClose}){const [its,setIts]=useSt
 
 
 /* ---------------- pedidos online (portal do cliente) ---------------- */
-const PORTAL_URL='https://jefersonrodriguesmanu-star.github.io/riber-print/pedido.html';
+const PORTAL_URL='https://riber-print.github.io/pedido.html';
 const ST_SOL={nova:['Nova','b-warn'],convertida:['Virou pedido','b-ok'],recusada:['Recusada','b-red']};
 function PedidosOnline(ctx){const {db,solicitacoes=[],clientes,pedidos,produtos,cfg,me,pode,toast,abrir}=ctx;const [st,setSt]=useState('nova');const [ver,setVer]=useState(null);
  const lista=solicitacoes.filter(x=>st==='todas'||x.status===st).sort((a,b)=>(b.criadoEm||'').localeCompare(a.criadoEm||''));
