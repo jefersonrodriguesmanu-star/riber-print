@@ -3194,7 +3194,7 @@ function CotarFrete({cfg,cli,t,cep,onClose,onEscolher}){const F0={...FRETE_PADRA
 
 /* ---- pedido com artes feito pela equipe: PNGs + cliente + entrega, igual ao link dos clientes ---- */
 function MontagemPedido({p,cfg,toast}){const [urls,setUrls]=useState({});
- useEffect(()=>{if(!window.RP_SB||!window.RP_SB.storage)return;let vivo=true;(async()=>{const o={};for(const a of p.arquivos||[]){if(!a.path)continue;try{const {data}=await window.RP_SB.storage.from('artes').createSignedUrl(a.path,3600);if(data)o[a.path]=data.signedUrl}catch(e){}}if(vivo)setUrls(o)})();return()=>{vivo=false}},[p.id]);
+ useEffect(()=>{if(!window.RP_SB||!window.RP_SB.storage)return;let vivo=true;(async()=>{const o={};for(const a of p.arquivos||[]){if(!a.path)continue;try{const u=await urlArte(a);if(u)o[a.path]=u}catch(e){}}if(vivo)setUrls(o)})();return()=>{vivo=false}},[p.id]);
  if(!(p.arquivos||[]).some(a=>a.path))return null;return html`<${MontagemOnline} x=${p} cfg=${cfg} urls=${urls} toast=${toast}/>`}
 function PedidoArtes({db,cfg,clientes,produtos,pedidos,me,pode,toast,abrir,setForm}){const P=cfg.portal||{};const W=Number(P.largura||57.899);
  const prod=useMemo(()=>produtos.find(x=>x.id===P.produtoId)||produtos.find(x=>x.id==='pr-dtf-metro')||produtos.find(x=>x.ativo!==false&&x.tipoDtf==='textil'&&x.unidade==='metro_linear'),[produtos]);
@@ -3233,8 +3233,10 @@ function PedidoArtes({db,cfg,clientes,produtos,pedidos,me,pode,toast,abrir,setFo
   if(ent==='correios'&&!freteSel)return toast('Cote e escolha o frete',1);if(ent==='entrega_local'&&!(cli.endereco||'').trim())return toast('O cadastro do cliente está sem endereço. Complete antes de escolher a entrega.',1);
   setS('Enviando artes…');try{const rid=uid();const mes=diaSP().slice(0,7);const arquivos=[];
    for(let i=0;i<arqs.length;i++){const a=arqs[i];const nome=a.nome.normalize('NFD').replace(/[^\w.\-]+/g,'_').slice(0,80);const path='sistema/'+mes+'/'+rid+'/'+String(i+1).padStart(2,'0')+'-'+nome;setS('Enviando artes '+(i+1)+'/'+arqs.length+'…');
-    const ST=window.RP_SB&&window.RP_SB.storage;if(ST){const {error}=await ST.from('artes').upload(path,a.file,{contentType:'image/png',upsert:false});if(error)throw new Error('Falha ao enviar '+a.nome+': '+error.message)}
-    arquivos.push({nome:a.nome,path:ST?path:'',larguraCm:pn(a.larg),alturaCm:pn(a.alt),qtd:Math.round(pn(a.qtd))||1,dpi:a.dpi})}
+    const ST=window.RP_SB&&window.RP_SB.storage;const nP=a.file.size>PARTE_ARTE?Math.ceil(a.file.size/PARTE_ARTE):0;
+    if(ST){if(!nP){const {error}=await ST.from('artes').upload(path,a.file,{contentType:'image/png',upsert:false});if(error)throw new Error('Falha ao enviar '+a.nome+': '+error.message)}
+     else for(let k=1;k<=nP;k++){setS('Enviando '+a.nome+' — parte '+k+'/'+nP+'…');const {error}=await ST.from('artes').upload(path+'.parte'+k,a.file.slice((k-1)*PARTE_ARTE,k*PARTE_ARTE),{contentType:'image/png',upsert:false});if(error)throw new Error('Falha ao enviar '+a.nome+' (parte '+k+'): '+error.message)}}
+    arquivos.push({nome:a.nome,path:ST?path:'',...(nP&&ST?{partes:nP}:{}),tamanho:a.file.size,larguraCm:pn(a.larg),alturaCm:pn(a.alt),qtd:Math.round(pn(a.qtd))||1,dpi:a.dpi})}
    const idx=Object.fromEntries(arqs.map((a,i)=>[a.nome,i]));const montagem={W,comp:Math.round(comp*1000)/1000,pecas:pecas.map(p=>[idx[p.ref.arquivo],Math.round(p.x*1000)/1000,Math.round(p.y*1000)/1000,Math.round(p.w*1000)/1000,Math.round(p.h*1000)/1000,p.rot?1:0])};
    setS('Criando pedido…');const cat=Object.fromEntries(cfg.categorias.map(c=>[c.id,c]));const c=cat[prod.categoria]||{grupo:'impressao',setor:'dtf_textil'};const numero=await proximoNumero(db,pedidos);const agora=new Date().toISOString();const et=cfg.etapas[0];
    const lista=arquivos.map(a=>a.qtd+'× '+a.nome+' ('+num(a.larguraCm,1)+'×'+num(a.alturaCm,1)+' cm)').join('; ');
@@ -4891,7 +4893,12 @@ function ReceberCompra({db,c,insumos,me,toast,onClose}){const [its,setIts]=useSt
 
 /* ---------------- pedidos online (portal do cliente) ---------------- */
 const PORTAL_URL='https://riber-print.github.io/pedido.html';
-async function baixarArte(a,toast){try{const sb=window.RP_SB;if(!sb)throw new Error('Disponível só no site do sistema');const {data,error}=await sb.storage.from('artes').download(a.path);if(error)throw error;
+/* arquivos acima do limite do armazenamento (50 MB) são guardados em partes e remontados ao baixar, sem perder qualidade */
+const PARTE_ARTE=45*1024*1024;
+async function arteBlob(a){const ST=window.RP_SB.storage.from('artes');if(!a.partes){const {data,error}=await ST.download(a.path);if(error||!data)throw error||new Error('Falha ao baixar');return data}
+ const bs=[];for(let i=1;i<=a.partes;i++){const {data,error}=await ST.download(a.path+'.parte'+i);if(error||!data)throw error||new Error('Falha ao baixar a parte '+i);bs.push(data)}return new Blob(bs,{type:'image/png'})}
+async function urlArte(a){if(!a.partes){const {data}=await window.RP_SB.storage.from('artes').createSignedUrl(a.path,3600);return data&&data.signedUrl}return URL.createObjectURL(await arteBlob(a))}
+async function baixarArte(a,toast){try{const sb=window.RP_SB;if(!sb)throw new Error('Disponível só no site do sistema');const data=await arteBlob(a);
  const nome=(a.nome||a.path.split('/').pop()).replace(/[\\/:*?"<>|]+/g,'_');const url=URL.createObjectURL(data);const el=document.createElement('a');el.href=url;el.download=/\.(png|jpe?g|pdf)$/i.test(nome)?nome:nome+'.png';document.body.appendChild(el);el.click();setTimeout(()=>{URL.revokeObjectURL(url);el.remove()},4000);return true}
  catch(e){toast&&toast('Não foi possível baixar '+(a.nome||'')+': '+(e.message||e.error||e),1);return false}}
 async function baixarTodas(arqs,toast){let n=0;for(const a of arqs){if(await baixarArte(a,toast))n++;await espera(400)}toast&&toast(n+' arte(s) baixada(s)')}
@@ -4917,7 +4924,7 @@ function montagemSolic(x,cfg){const arqs=x.arquivos||[];if(!arqs.length)return n
 async function baixarMontagemSolic({x,cfg,maxCm=500,prog}){const M=montagemSolic(x,cfg);if(!M||!M.pecas.length)throw new Error('Este pedido não tem artes para montar');
  if(!window.RP_SB)throw new Error('Disponível no sistema online');if(typeof CompressionStream==='undefined')throw new Error('Este navegador não consegue gerar o PNG. Use o Chrome atualizado.');
  const dpi=300,px=cm=>Math.round(cm/2.54*dpi),Wpx=px(M.W),esp=Number(x.espaco??0.5);const segs=segmentosPecas(M.pecas,M.comp,Math.min(maxCm,500),esp);const n=segs.length;const bms={};
- const bm=async path=>{if(bms[path])return bms[path];const {data,error}=await window.RP_SB.storage.from('artes').download(path);if(error||!data)throw new Error('Não consegui baixar a arte '+path.split('/').pop());return bms[path]=await createImageBitmap(data)};
+ const porPath=Object.fromEntries((x.arquivos||[]).map(a=>[a.path,a]));const bm=async path=>{if(bms[path])return bms[path];let data;try{data=await arteBlob(porPath[path]||{path})}catch(e){throw new Error('Não consegui baixar a arte '+path.split('/').pop())}return bms[path]=await createImageBitmap(data)};
  const nome=(x.cliente?'pedido-online-':'pedido-')+x.numero+'-'+String((x.cliente||{}).nome||x.clienteNome||'cliente').normalize('NFD').replace(/[^\w]+/g,'-').replace(/^-|-$/g,'').slice(0,30)+'-'+num(M.comp/100)+'m';
  try{for(let i=0;i<n;i++){const {y0,y1,pecas:ps}=segs[i];
    const blob=await pngEmFaixas({pecas:ps,y0,y1,Wpx,px,bm,dpi,prog:pc=>prog&&prog((n>1?'Parte '+(i+1)+' de '+n+': ':'Gerando PNG: ')+pc+'%')});
@@ -4935,7 +4942,7 @@ function MontagemOnline({x,cfg,urls,toast}){const M=useMemo(()=>montagemSolic(x,
   <canvas ref=${ref} style=${{width:'100%',display:'block',borderRadius:10,background:'repeating-conic-gradient(rgba(127,127,127,.18) 0 25%,transparent 0 50%) 0 0/16px 16px'}}></canvas>
   <div className="sm mut">PNG transparente em 300 DPI, na largura do rolo. Passou de ${num(Number(maxCm)/100)} m? O sistema divide em partes, sem cortar nenhuma estampa.</div></div>`}
 function SolicitacaoDetalhe({db,id,solicitacoes=[],clientes,pedidos,produtos,cfg,me,pode,toast,abrir,onClose}){const x=solicitacoes.find(y=>y.id===id);const [urls,setUrls]=useState({});const [s,setS]=useState(false);const [rec,setRec]=useState(false);const [motivo,setMotivo]=useState('');
- useEffect(()=>{if(!x||!window.RP_SB)return;(async()=>{const o={};for(const a of x.arquivos||[]){try{const {data}=await window.RP_SB.storage.from('artes').createSignedUrl(a.path,3600);if(data)o[a.path]=data.signedUrl}catch(e){}}setUrls(o)})()},[id]);
+ useEffect(()=>{if(!x||!window.RP_SB)return;(async()=>{const o={};for(const a of x.arquivos||[]){try{const u=await urlArte(a);if(u)o[a.path]=u}catch(e){}}setUrls(o)})()},[id]);
  if(!x)return null;const C=x.cliente||{};const cliExist=clientes.find(c=>c.id===x.clienteId)||clientes.find(c=>dig(c.whatsapp).slice(-9)===dig(C.whatsapp).slice(-9));
  const msg='Olá, '+(C.nome||'').split(' ')[0]+'! Recebemos seu pedido online nº '+x.numero+' ('+num(x.metros)+' m, '+moeda(x.total)+'). Já estamos conferindo as artes.';
  const converter=async()=>{if(!pode('criar'))return toast('Sem permissão para criar pedidos',1);setS(true);
