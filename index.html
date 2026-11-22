@@ -62,7 +62,8 @@ td{padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:middle}t
 .col.over{border-color:var(--acc);background:color-mix(in oklab,var(--acc) 6%,var(--soft))}.col .h{display:flex;align-items:center;gap:8px;padding:10px 12px;font-size:13.5px;font-weight:600}
 .col .bd{padding:0 8px 8px;overflow-y:auto;display:flex;flex-direction:column;gap:8px}
 .tk{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:10px 11px;cursor:grab;position:relative}
-.tk:hover{box-shadow:0 4px 18px rgba(0,0,0,.08)}.tk.urg{border-left:3px solid var(--red)}.tk.alta{border-left:3px solid var(--warn)}
+.tk:hover{box-shadow:0 4px 18px rgba(0,0,0,.08)}.tk.urg{border-left:3px solid var(--red)}
+.kbslot{border-radius:11px;transition:box-shadow .1s}.kbslot.antes{box-shadow:0 -3px 0 0 var(--acc,#d946ef)}.kbslot.depois{box-shadow:0 3px 0 0 var(--acc,#d946ef)}.tk.alta{border-left:3px solid var(--warn)}
 .dot{width:9px;height:9px;border-radius:9px;flex:none}
 .modal{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.5);display:flex;align-items:flex-start;justify-content:center;padding:4vh 12px;overflow-y:auto}
 .modal>.card{width:100%;max-width:760px;animation:up .2s ease-out}.modal>.card.lg{max-width:1100px}
@@ -2795,7 +2796,7 @@ function App(){
   if(e.altKey&&e.code==='KeyN'&&!['INPUT','TEXTAREA','SELECT'].includes(tg)&&pode('criar')){e.preventDefault();setForm({t:'pedido'})}};addEventListener('keydown',k);return()=>removeEventListener('keydown',k)},[pode]);
  if(db===undefined)return html`<div className="empty" style=${{minHeight:'60vh',display:'grid',placeItems:'center'}}>Conectando ao banco de dados…</div>`;
  if(db===null)return html`<div className="empty" style=${{minHeight:'60vh',display:'grid',placeItems:'center'}}><div><div className="b">Banco de dados indisponível nesta visualização.</div><div className="sm">Abra o link do sistema com sua conta Claude conectada.</div></div></div>`;
- const NAV=[['Visão geral',[['dashboard','Dashboard','dash'],['monitor','Vendas ao vivo','trend']]],['Comercial',[['pedidos','Pedidos','ped'],['pedidoartes','Pedido com artes','up'],['cotacoes','Cotações'+(cot.rows.filter(x=>x.status==='aprovada').length?' ('+cot.rows.filter(x=>x.status==='aprovada').length+')':''),'ped'],['online','Pedidos online'+(sol.rows.filter(x=>x.status==='nova').length?' ('+sol.rows.filter(x=>x.status==='nova').length+')':''),'dl'],['kanban','Kanban','kb'],['clientes','Clientes','cli'],['produtos','Produtos e serviços','prd']]],['Financeiro',[['fechamentos','Fechamentos','fch'],['custos','Custos e simulador','cus'],['relatorios','Relatórios','print']]],['Marketing',[['precos','Preços do site','cus'],['metricas','Métricas do site','trend'],['disparos','Enviar no WhatsApp','cli']]],['Produção',[['impressao','Central de impressão','print'],['maquinas','Máquinas','cpu'],['entregas','Entregas'+(ped.rows.filter(p=>p.entrega==='entrega_local'&&!p.cancelado&&p.statusProd==='pronto').length?' ('+ped.rows.filter(p=>p.entrega==='entrega_local'&&!p.cancelado&&p.statusProd==='pronto').length+')':''),'box'],['descartes','Descartes','trash'],['estampas','Estampas por SKU','box']]],['Estoque',[['insumos','Matéria-prima','box'],['compras','Compras e fornecedores','ped']]],['Administração',[['colaboradores','Colaboradores','cli'],['equipe','Usuários e permissões','eq'],['config','Configurações','cfg']]]];
+ const NAV=[['Visão geral',[['dashboard','Dashboard','dash'],['monitor','Vendas ao vivo','trend']]],['Comercial',[['pedidos','Pedidos','ped'],['pedidoartes','Pedido com artes','up'],['cotacoes','Cotações'+(cot.rows.filter(x=>x.status==='aprovada').length?' ('+cot.rows.filter(x=>x.status==='aprovada').length+')':''),'ped'],['online','Pedidos online'+(sol.rows.filter(x=>x.status==='nova').length?' ('+sol.rows.filter(x=>x.status==='nova').length+')':''),'dl'],['kanban','Kanban','kb'],['clientes','Clientes','cli'],['produtos','Produtos e serviços','prd']]],['Financeiro',[['fechamentos','Fechamentos','fch'],['custos','Custos e simulador','cus'],['relatorios','Relatórios','print']]],['Marketing',[['precos','Preços do site','cus'],['metricas','Métricas do site','trend'],['disparos','Enviar no WhatsApp','cli']]],['Produção',[['filamaq','Fila por máquina','print'],['impressao','Central de impressão','print'],['maquinas','Máquinas','cpu'],['entregas','Entregas'+(ped.rows.filter(p=>p.entrega==='entrega_local'&&!p.cancelado&&p.statusProd==='pronto').length?' ('+ped.rows.filter(p=>p.entrega==='entrega_local'&&!p.cancelado&&p.statusProd==='pronto').length+')':''),'box'],['descartes','Descartes','trash'],['estampas','Estampas por SKU','box']]],['Estoque',[['insumos','Matéria-prima','box'],['compras','Compras e fornecedores','ped']]],['Administração',[['colaboradores','Colaboradores','cli'],['equipe','Usuários e permissões','eq'],['config','Configurações','cfg']]]];
  const lento=[cli,prd,ped].some(c=>c.err==='lento');
  let page;
  if(!papel)page=html`<div className="card pad" style=${{maxWidth:520,margin:'60px auto',textAlign:'center'}}><h2>Acesso aguardando liberação</h2><p className="mut">Você já está registrado. Peça ao administrador para definir seu papel em <b>Equipe e permissões</b>.</p></div>`;
@@ -2806,6 +2807,7 @@ function App(){
  else if(view==='equipe')page=html`<${Equipe} ...${ctx} equipe=${eqp.rows} papeis=${pap.rows}/>`;
  else if(view==='config')page=html`<${Config} ...${ctx}/>`;
  else if(view==='impressao')page=html`<${Impressoes} ...${ctx}/>`;
+ else if(view==='filamaq')page=html`<${FilaMaquinas} ...${ctx}/>`;
  else if(view==='maquinas')page=html`<${Maquinas} ...${ctx}/>`;
  else if(view==='descartes')page=html`<${Descartes} ...${ctx}/>`;
  else if(view==='insumos')page=html`<${Insumos} ...${ctx}/>`;
@@ -3028,7 +3030,8 @@ function Dashboard({db,pedidos,clientes,cfg,pode,abrir,ir,impressoes=[],insumos=
   </div></div>`}
 
 /* ---------------- pedidos ---------------- */
-const naFila=p=>!p.cancelado&&p.origem!=='scalle'&&['aguardando','em_producao'].includes(p.statusProd||'aguardando')&&((p.totais?.mt||0)+(p.totais?.mu||0)>0)&&(p.statusFin==='pago'||!!p.autorizado||p.interno);
+const ORD_KB=p=>Number.isFinite(Number(p.ordemKb))&&p.ordemKb!==null&&p.ordemKb!==''?Number(p.ordemKb):1e15;
+const naFila=p=>!p.cancelado&&p.origem!=='scalle'&&['aguardando','em_producao'].includes(p.statusProd||'aguardando')&&((p.totais?.mt||0)+(p.totais?.mu||0)>0)&&(p.statusFin==='pago'||!!p.autorizado||p.interno)&&!impressoP(p);
 const PRI_ORD={urgente:0,alta:1,normal:2,baixa:3};
 const esperaTxt=iso=>{const h=(Date.now()-new Date(iso).getTime())/36e5;return h<1?'há menos de 1 h':h<24?'há '+Math.floor(h)+' h':'há '+Math.floor(h/24)+' dia(s)'};
 function Pedidos({pedidos,clientes=[],cfg,abrir,pode,setForm,toast}){
@@ -3041,7 +3044,7 @@ function Pedidos({pedidos,clientes=[],cfg,abrir,pode,setForm,toast}){
   if(cliF==='__loja'&&!p.interno)return false;if(cliF==='__vendas'&&p.interno)return false;if(cliF&&cliF[0]!=='_'&&p.clienteId!==cliF)return false;
   if(fin&&p.statusFin!==fin)return false;if(pr&&p.statusProd!==pr)return false;if(!fila&&ini&&p.dia<ini)return false;if(!fila&&fim&&p.dia>fim)return false;
   if(atr&&!(p.previsao&&new Date(p.previsao)<new Date()&&['aguardando','em_producao'].includes(p.statusProd)))return false;return true});
- const lista=fila?[...lista0].sort((a,b)=>(PRI_ORD[a.prioridade]??2)-(PRI_ORD[b.prioridade]??2)||String(a.criadoEm||'').localeCompare(String(b.criadoEm||''))||a.numero-b.numero):lista0;
+ const lista=fila?[...lista0].sort((a,b)=>ORD_KB(a)-ORD_KB(b)||(PRI_ORD[a.prioridade]??2)-(PRI_ORD[b.prioridade]??2)||String(a.criadoEm||'').localeCompare(String(b.criadoEm||''))||a.numero-b.numero):lista0;
  const exportar=async()=>{const dl=await claude.use('downloads');if(!dl)return toast('Download indisponível nesta visualização',1);
   const L=[['Pedido','Data','Cliente','Metros Têxtil','Metros UV','Peças','Total','Pago','Saldo','Financeiro','Produção']].concat(lista.map(p=>[p.numero,dBR(p.criadoEm),p.clienteNome,num(p.totais?.mt),num(p.totais?.mu),p.totais?.pecas,num(p.total),num(p.pago),num(p.saldo),FIN[p.statusFin][0],PROD[p.statusProd][0]]));
   const csv='﻿'+L.map(r=>r.map(c=>{const s=String(c??'');return/[;"\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}).join(';')).join('\r\n');
@@ -3055,7 +3058,7 @@ function Pedidos({pedidos,clientes=[],cfg,abrir,pode,setForm,toast}){
   <div className="row between" style=${{marginBottom:14}}><div><h1>Pedidos</h1><div className="sub">${lista.length} de ${pedidos.length} pedidos</div></div>
    <div className="row">${pode('exportar')&&html`<button className="btn" onClick=${exportar}><${Ic} n="dl"/>Exportar CSV</button>`}${pode('criar')&&html`<a className="btn" style=${{textDecoration:'none'}} href="#pedidoartes"><${Ic} n="up"/>Pedido com artes (PNG)</a>`}${pode('criar')&&html`<button className="btn p" onClick=${()=>setForm({t:'pedido'})}><${Ic} n="plus"/>Novo pedido</button>`}</div></div>
   <div className="row" style=${{marginBottom:10,flexWrap:'wrap',gap:8,alignItems:'center'}}><div className="tabs" style=${{flexWrap:'wrap'}}><button className=${atalhoAtivo==='fila'?'on':''} style=${{fontWeight:700}} onClick=${()=>setFila(true)} title="Pedidos liberados (pagos ou autorizados) que ainda não foram impressos, do mais antigo para o mais recente">🖨️ Fila de impressão${nFila?' ('+nFila+')':''}</button><button className=${atalhoAtivo==='todos'?'on':''} onClick=${()=>{setFila(false);setIni('');setFim('')}}>Todos</button>${atalhos.map(([k,l,a,b])=>html`<button key=${k} className=${atalhoAtivo===k?'on':''} onClick=${()=>{setFila(false);setIni(a);setFim(b)}}>${l}</button>`)}<button className=${atalhoAtivo==='custom'?'on':''} onClick=${()=>{setFila(false);if(atalhoAtivo!=='custom'){setIni(addD(hj,-6));setFim(hj)}}}>Personalizado</button></div>
-   ${fila&&html`<span className="sm mut">Pedidos pagos ou autorizados que ainda não foram impressos · urgentes primeiro, depois do mais antigo para o mais recente</span>`}${!fila&&(ini||fim)&&html`<span className="sm mut">${ini&&fim?(ini===fim?dBR(ini):dBR(ini)+' a '+dBR(fim)):ini?'desde '+dBR(ini):'até '+dBR(fim)}</span>`}</div>
+   ${fila&&html`<span className="sm mut">Pedidos pagos ou autorizados que ainda não foram impressos · na ordem de prioridade</span><a className="btn sm" style=${{textDecoration:'none'}} href="#filamaq">🖨️ Ver fila por máquina</a>`}${!fila&&(ini||fim)&&html`<span className="sm mut">${ini&&fim?(ini===fim?dBR(ini):dBR(ini)+' a '+dBR(fim)):ini?'desde '+dBR(ini):'até '+dBR(fim)}</span>`}</div>
   <div className="grid g4" style=${{marginBottom:12}}>
    <div className="card kpi hero"><div className="t">${fila?'Pedidos na fila':'Pedidos'}</div><div className="v tab">${num(fila?lista.length:R.n,0)}</div>${fila?html`<div className="sm mut">${lista.length?'o mais antigo espera '+esperaTxt(lista.slice().sort((a,b)=>String(a.criadoEm).localeCompare(String(b.criadoEm)))[0].criadoEm).replace('há ',''):'fila vazia'}${R.nl?' · '+R.nl+' da loja própria':''}</div>`:''}<div className="sm mut" style=${{display:fila?'none':''}}>${R.nl?'+ '+R.nl+' da loja própria · ':''}${R.prontos} pronto(s)/entregue(s)${R.canc?' · '+R.canc+' cancelado(s)':''}</div></div>
    <div className="card kpi"><div className="t">${fila?'Metros para imprimir':'Metros impressos'}</div><div className="v tab">${num(metrosTot)} m</div><div className="sm mut">Têxtil ${num(R.mt)} · UV ${num(R.mu)}${R.ml?' · loja própria '+num(R.ml):''}${R.pecas?' · '+num(R.pecas,0)+' peça(s)':''}</div></div>
@@ -3401,8 +3404,81 @@ async function moverPedido({db,p,etapa,me,pode,produtos,toast,abrir}){
   if(ONLINE()&&abrir&&np.entrega&&np.entrega!=='retirada'&&!np.cancelado&&['pronto','entregue'].includes(c.statusProd)&&!(p.etiqueta&&p.etiqueta.id))abrir('etiqueta',p.id)}
  catch(e){toast('Erro ao mover: '+(e.message||e.code),1)}}
 
+/* ---- fila de impressão por máquina: consolidada + uma fila por máquina, ao vivo ---- */
+const SET_IMP=['dtf_textil','dtf_uv'];
+const impressoP=p=>!!p.impressoEm||(SET_IMP.some(s=>p.ordens&&p.ordens[s])&&SET_IMP.every(s=>!(p.ordens&&p.ordens[s])||p.ordens[s]==='concluida'));
+const metrosP=p=>(p.totais?.mt||0)+(p.totais?.mu||0);
+const durTxt=ms=>{const m=Math.max(0,Math.round(ms/6e4));return m<60?m+' min':Math.floor(m/60)+'h'+String(m%60).padStart(2,'0')};
+function FilaMaquinas(ctx){
+ const {pedidos,maquinas=[],cfg,pode,toast,abrir,db,me}=ctx;
+ const [agora,setAgora]=useState(Date.now());useEffect(()=>{const t=setInterval(()=>setAgora(Date.now()),20000);return()=>clearInterval(t)},[]);
+ const [alvo,setAlvo]=useState(null);const drag=useRef(null);const [q,setQ]=useState('');
+ const maqs=maquinas.filter(m=>m.ativo!==false&&m.status!=='inativa').sort((a,b)=>String(a.nome).localeCompare(String(b.nome),'pt-BR',{numeric:true}));
+ const idsMaq=new Set(maqs.map(m=>m.id));
+ const naMaq=p=>!p.cancelado&&p.origem!=='scalle'&&!impressoP(p)&&metrosP(p)>0&&(p.etapaId==='imprimindo'||naFila(p));
+ const todos=pedidos.filter(naMaq).filter(p=>!q||String(p.numero).includes(dig(q)||'~')||norm(p.clienteNome).includes(norm(q)));
+ const ordem=(a,b)=>(a.etapaId==='imprimindo'?0:1)-(b.etapaId==='imprimindo'?0:1)||ORD_KB(a)-ORD_KB(b)||(PRI_ORD[a.prioridade]??2)-(PRI_ORD[b.prioridade]??2)||String(a.criadoEm||'').localeCompare(String(b.criadoEm||''))||a.numero-b.numero;
+ const colunas=[{id:'',nome:'Fila consolidada',sub:'Pedidos ainda sem máquina',cor:'#71717a'},...maqs.map(m=>({id:m.id,nome:m.nome,sub:[m.fabricante,m.modelo].filter(Boolean).join(' · '),cor:m.status==='operando'?'#16a34a':'#f59e0b',m}))];
+ const daCol=id=>todos.filter(p=>(idsMaq.has(p.maquinaId)?p.maquinaId:'')===id).sort(ordem);
+ const etapa=id=>cfg.etapas.find(e=>e.id===id);
+ const proxEtapa=()=>{const i=cfg.etapas.findIndex(e=>e.id==='imprimindo');const r=cfg.etapas.slice(i+1).find(e=>!e.cancela);return r||null};
+ const salvarP=async(np,msg)=>{const {id:_x,...c}=normalizar(np,me);await db.doc('pedidos/'+np.id).set(c);msg&&toast(msg)};
+ const mover=async(p,colId,ref,depois)=>{setAlvo(null);if(!pode('mover'))return toast('Você não tem permissão para mexer na fila.',1);
+  const lista=daCol(colId).filter(x=>x.id!==p.id);let i=ref?lista.findIndex(x=>x.id===ref.id):lista.length;if(i<0)i=lista.length;if(ref&&depois)i++;lista.splice(i,0,p);
+  try{const atualCol=idsMaq.has(p.maquinaId)?p.maquinaId:'';
+   if(atualCol!==colId){const m=maqs.find(x=>x.id===colId);if(p.etapaId==='imprimindo'&&!colId)return toast('#'+p.numero+' está imprimindo. Marque como impresso ou volte para a fila antes.',1);
+    await db.doc('pedidos/'+p.id).update({maquinaId:colId||null,maquinaNome:m?m.nome:null,historico:[...(p.historico||[]),{em:new Date().toISOString(),por:me,tipo:'producao',obs:colId?'Fila da '+m.nome:'Voltou para a fila consolidada'}]})}
+   for(let j=0;j<lista.length;j++){const x=lista[j];const o=(j+1)*10;if(Number(x.ordemKb)!==o)await db.doc('pedidos/'+x.id).update({ordemKb:o})}
+   toast('#'+p.numero+' → '+(colunas.find(c=>c.id===colId)?.nome||'')+' ('+(lista.indexOf(p)+1)+'º)')}catch(e){toast('Erro: '+(e.message||e.code),1)}};
+ const imprimir=async(p,m)=>{if(!pode('mover'))return toast('Sem permissão.',1);const e=etapa('imprimindo');if(!e)return toast('Crie a etapa "Imprimindo" nas configurações.',1);
+  const setor=m&&m.tipo==='uv'?'dtf_uv':'dtf_textil';const ag=new Date().toISOString();
+  const np={...p,maquinaId:m.id,maquinaNome:m.nome,imprimindoEm:ag,ordens:{...(p.ordens||{}),...(p.ordens&&p.ordens[setor]?{[setor]:'em_andamento'}:{})}};
+  if(p.etapaId==='imprimindo')return salvarP(np,'#'+p.numero+' imprimindo na '+m.nome);
+  await moverPedido({...ctx,p:np,etapa:e})};
+ const impresso=async p=>{if(!pode('mover'))return toast('Sem permissão.',1);const ag=new Date().toISOString();
+  const ord={...(p.ordens||{})};for(const s of SET_IMP)if(ord[s])ord[s]='concluida';
+  const np={...p,impressoEm:ag,ordens:ord,historico:[...(p.historico||[]),{em:ag,por:me,tipo:'producao',obs:'Impresso'+(p.maquinaNome?' na '+p.maquinaNome:'')+(p.imprimindoEm?' ('+durTxt(Date.parse(ag)-Date.parse(p.imprimindoEm))+')':'')}]};
+  const e=proxEtapa();if(e&&p.etapaId!==e.id){const ok=await moverPedido({...ctx,p:np,etapa:e});return ok}
+  await salvarP(np,'#'+p.numero+' impresso')};
+ const voltar=async p=>{const e=etapa('fila');if(!e)return;await moverPedido({...ctx,p:{...p,imprimindoEm:null},etapa:e})};
+ const res=colunas.map(c=>{const ps=daCol(c.id);const imp=ps.filter(p=>p.etapaId==='imprimindo');const fila=ps.filter(p=>p.etapaId!=='imprimindo');
+  const vel=c.m?pn(String(c.m.velocidade||'').replace(',','.')):0;const mt=sum(fila,metrosP);const mi=sum(imp,metrosP);
+  return {...c,ps,imp,fila,mt,mi,vel,horas:vel>0?(mt+mi)/vel:0}});
+ const tot={ped:todos.length,mt:sum(todos,metrosP)};
+ const telaCheia=()=>{const el=document.getElementById('rp-filamaq');try{document.fullscreenElement?document.exitFullscreen():el&&el.requestFullscreen&&el.requestFullscreen()}catch(e){}};
+ const Card=({p,c,i})=>{const m=c.m;const imp=p.etapaId==='imprimindo';const at=p.previsao&&new Date(p.previsao)<new Date();
+  return html`<div key=${p.id} className=${'kbslot'+(alvo&&alvo.k===p.id?(alvo.depois?' depois':' antes'):'')}
+   onDragOver=${e=>{e.preventDefault();e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();const d=e.clientY>r.top+r.height/2;if(!alvo||alvo.k!==p.id||alvo.depois!==d)setAlvo({k:p.id,depois:d})}}
+   onDrop=${e=>{e.preventDefault();e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();drag.current&&mover(drag.current,c.id,p,e.clientY>r.top+r.height/2)}}>
+   <div className=${'tk'+(p.prioridade==='urgente'?' urg':p.prioridade==='alta'?' alta':'')} draggable=${!imp} style=${imp?{borderColor:'#d946ef',boxShadow:'0 0 0 2px #d946ef33',cursor:'default'}:null}
+    onDragStart=${e=>{drag.current=p;e.dataTransfer.effectAllowed='move';try{e.dataTransfer.setData('text/plain',p.id)}catch(_){}}}>
+    <div className="row between"><span className="row" style=${{gap:6}}><span className="sm mut tab">${imp?'▶':i+'º'}</span><button style=${{border:0,background:'none',padding:0,fontWeight:700,cursor:'pointer'}} onClick=${()=>abrir('pedido',p.id)}>#${p.numero}</button></span><b className="tab">${num(metrosP(p))} m</b></div>
+    <div className="sm" style=${{marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${p.clienteNome}</div>
+    <div className="row sm mut" style=${{gap:6,marginTop:4,flexWrap:'wrap'}}>${p.prioridade==='urgente'&&html`<span className="badge" style=${{background:'#fee2e2',color:'#b91c1c'}}>Urgente</span>`}${p.prioridade==='alta'&&html`<span className="badge" style=${{background:'#fef3c7',color:'#92400e'}}>Alta</span>`}${at&&html`<span className="badge" style=${{background:'#fee2e2',color:'#b91c1c'}}>Atrasado</span>`}
+     ${imp?html`<span style=${{color:'#c026d3',fontWeight:700}}>Imprimindo há ${durTxt(agora-Date.parse(p.imprimindoEm||p.etapaDesde||agora))}</span>`:html`<span>espera ${esperaTxt(p.criadoEm).replace('há ','')}</span>`}</div>
+    ${pode('mover')&&html`<div className="row" style=${{gap:6,marginTop:8,flexWrap:'wrap'}}>
+     ${imp?html`<button className="btn sm p" onClick=${()=>impresso(p)}>✓ Impresso</button><button className="btn sm" onClick=${()=>voltar(p)}>↩ Voltar à fila</button>`
+      :m?html`<button className="btn sm p" onClick=${()=>imprimir(p,m)}>▶ Imprimir agora</button>`
+      :html`<select className="in" style=${{minHeight:30,fontSize:12,width:'100%'}} value="" onChange=${e=>{const id=e.target.value;if(id)mover(p,id,null,false)}}><option value="">Mandar para a máquina…</option>${maqs.map(x=>html`<option key=${x.id} value=${x.id}>${x.nome}</option>`)}</select>`}</div>`}
+   </div></div>`};
+ return html`<div id="rp-filamaq" style=${{background:'var(--bg)',padding:document.fullscreenElement?16:0,minHeight:document.fullscreenElement?'100vh':null,overflow:'auto'}}>
+  <div className="row between" style=${{marginBottom:12,flexWrap:'wrap',gap:8}}><div><h1>Fila por máquina</h1><div className="sub">Arraste os pedidos da fila consolidada para a máquina, e para cima ou para baixo para mudar a ordem. Atualiza sozinho, ao vivo.</div></div>
+   <div className="row" style=${{gap:8}}><input className="in" style=${{width:200}} placeholder="Nº ou cliente" value=${q} onChange=${e=>setQ(e.target.value)}/><button className="btn" onClick=${telaCheia}>⛶ Tela cheia</button></div></div>
+  <div className="grid" style=${{gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:10,marginBottom:14}}>
+   <div className="card kpi hero"><div className="t">Fila total</div><div className="v tab">${num(tot.mt)} m</div><div className="sm mut">${tot.ped} pedido(s) · ${res[0].ps.length} sem máquina (${num(res[0].mt)} m)</div></div>
+   ${res.slice(1).map(c=>{const st=c.m.status!=='operando'?['Em manutenção','#f59e0b']:c.imp.length?['Imprimindo','#c026d3']:c.fila.length?['Parada — tem fila','#dc2626']:['Livre','#16a34a'];
+    return html`<div key=${c.id} className="card kpi" style=${{borderTop:'4px solid '+st[1]}}><div className="row between"><div className="t">${c.nome}</div><span className="badge" style=${{background:st[1]+'22',color:st[1],fontWeight:700}}>${c.imp.length?'● ':''}${st[0]}</span></div>
+     <div className="v tab">${num(c.mt+c.mi)} m</div>
+     <div className="sm mut">${c.imp.length?'Agora: #'+c.imp.map(p=>p.numero).join(', #')+' ('+num(c.mi)+' m) · ':''}${c.fila.length} na fila (${num(c.mt)} m)${c.horas>0?' · ~'+durTxt(c.horas*36e5)+' de trabalho':''}</div></div>`})}</div>
+  <div className="kb">${res.map(c=>html`<div key=${c.id||'cons'} className="col" style=${{minWidth:280}} onDragOver=${e=>e.preventDefault()} onDrop=${e=>{e.preventDefault();drag.current&&mover(drag.current,c.id,null,false)}}>
+   <div className="h"><span className="dot" style=${{background:c.cor}}></span><span style=${{flex:1}}>${c.nome}</span><span className="badge">${c.ps.length}</span></div>
+   <div className="sm mut tab" style=${{padding:'0 12px 8px',marginTop:-6}}>${num(c.mt+c.mi)} m${c.sub?' · '+c.sub:''}</div>
+   <div className="bd">${c.ps.length?(()=>{let n=0;return c.ps.map(p=>Card({p,c,i:p.etapaId==='imprimindo'?0:++n}))})():html`<div className="sm mut" style=${{padding:12,textAlign:'center'}}>${c.id?'Arraste pedidos para cá':'Nenhum pedido sem máquina'}</div>`}</div></div>`)}</div>
+  ${!maqs.length&&html`<div className="card pad sm mut" style=${{marginTop:12}}>Nenhuma máquina cadastrada. Cadastre em Produção → Máquinas.</div>`}
+ </div>`}
+
 function Kanban(ctx){
- const {pedidos,cfg,abrir,pode}=ctx;const clientes=ctx.clientes||[];const [vis,setVis]=useState('geral');const [q,setQ]=useState('');const [cliF,setCliF]=useState('');const [fin,setFin]=useState('');const [pr,setPr]=useState('');const [atr,setAtr]=useState(false);const [over,setOver]=useState(null);const drag=useRef(null);
+ const {pedidos,cfg,abrir,pode}=ctx;const clientes=ctx.clientes||[];const [vis,setVis]=useState('geral');const [q,setQ]=useState('');const [cliF,setCliF]=useState('');const [fin,setFin]=useState('');const [pr,setPr]=useState('');const [atr,setAtr]=useState(false);const [over,setOver]=useState(null);const drag=useRef(null);const [alvo,setAlvo]=useState(null);
  const [per,setPer]=useState(()=>{try{return localStorage.getItem('rp_kb_per')||'ativos'}catch(e){return 'ativos'}});const [de,setDe]=useState(addD(diaSP(),-6));const [ate,setAte]=useState(diaSP());
  useEffect(()=>{try{localStorage.setItem('rp_kb_per',per)}catch(e){}},[per]);
  const hoje=diaSP();const faixa=per==='hoje'?[hoje,hoje]:per==='ontem'?[addD(hoje,-1),addD(hoje,-1)]:per==='7'?[addD(hoje,-6),hoje]:per==='15'?[addD(hoje,-14),hoje]:per==='30'?[addD(hoje,-29),hoje]:per==='mes'?[hoje.slice(0,8)+'01',hoje]:per==='custom'?[de<=ate?de:ate,de<=ate?ate:de]:null;
@@ -3423,9 +3499,16 @@ function Kanban(ctx){
   if(!pode('ops'))return ctx.toast('Sem permissão para alterar ordens de produção.',1);
   const p=card.p;const {id:_x,...c}=normalizar({...p,ordens:{...p.ordens,[vis]:colId},historico:[...p.historico,{em:new Date().toISOString(),por:ctx.me,tipo:'producao',obs:SETORES[vis]+': '+OPS[colId]}]},ctx.me);
   try{await ctx.db.doc('pedidos/'+p.id).set(c);ctx.toast(SETORES[vis]+' #'+p.numero+': '+OPS[colId])}catch(e){ctx.toast('Erro: '+(e.message||e.code),1)}};
+ const ordenar=cs=>cs.map((x,i)=>[x,i]).sort((a,b)=>ORD_KB(a[0].p)-ORD_KB(b[0].p)||a[1]-b[1]).map(a=>a[0]);
+ const reordenar=async(colId,card,ref,depois)=>{setAlvo(null);setOver(null);if(!card||card.k===ref.k)return;
+  if(card.col!==colId)return soltar(colId,card);
+  if(!pode('mover'))return ctx.toast('Você não tem permissão para mudar a ordem.',1);
+  const atual=ordenar(cards.filter(x=>x.col===colId)).filter(x=>x.k!==card.k);let i=atual.findIndex(x=>x.k===ref.k);if(i<0)return;if(depois)i++;atual.splice(i,0,card);
+  const mud=atual.map((x,j)=>[x.p,(j+1)*10]).filter(([p,o])=>Number(p.ordemKb)!==o);
+  try{for(const [p,o] of mud)await ctx.db.doc('pedidos/'+p.id).update({ordemKb:o});ctx.toast('#'+card.p.numero+' agora é o '+(atual.indexOf(card)+1)+'º de "'+(cols.find(c=>c.id===colId)?.nome||'')+'"')}catch(e){ctx.toast('Erro ao reordenar: '+(e.message||e.code),1)}};
  const VIS=[['geral','Geral'],...Object.entries(SETORES),['financeiro','Financeiro']];
  return html`<div>
-  <div className="row between" style=${{marginBottom:12}}><div><h1>Kanban</h1><div className="sub">Arraste os cartões entre as colunas. Toda movimentação fica no histórico do pedido.</div></div>
+  <div className="row between" style=${{marginBottom:12}}><div><h1>Kanban</h1><div className="sub">Arraste os cartões entre as colunas para mudar a etapa, ou para cima e para baixo para mudar a prioridade de impressão.</div></div>
    <input className="in" style=${{width:240}} placeholder="Nº ou cliente" value=${q} onChange=${e=>setQ(e.target.value)}/></div>
   <div className="row" style=${{marginBottom:10,flexWrap:'wrap',gap:8,alignItems:'center'}}><span className="sm mut">Período:</span>
    <div className="tabs" style=${{flexWrap:'wrap'}}><button className=${fila?'on':''} style=${{fontWeight:700}} onClick=${()=>setPer('fila')} title="Pedidos liberados (pagos ou autorizados) que ainda não foram impressos">🖨️ Fila de impressão${nFila?' ('+nFila+')':''}</button>${[['ativos','Em andamento'],['hoje','Hoje'],['ontem','Ontem'],['7','7 dias'],['15','15 dias'],['30','30 dias'],['mes','Este mês'],['custom','Personalizado']].map(([k,l])=>html`<button key=${k} className=${per===k?'on':''} onClick=${()=>setPer(k)}>${l}</button>`)}</div>
@@ -3438,11 +3521,15 @@ function Kanban(ctx){
    <label className="row sm mut" style=${{gap:6}}><input type="checkbox" checked=${atr} onChange=${e=>setAtr(e.target.checked)}/>Atrasados</label>
    ${(q||cliF||fin||pr||atr||per!=='ativos')&&html`<button className="btn sm" onClick=${()=>{setQ('');setCliF('');setFin('');setPr('');setAtr(false);setPer('ativos')}}>Limpar</button>`}</div>
   <div className="tabs" style=${{marginBottom:12}}>${VIS.map(([k,l])=>html`<button key=${k} className=${vis===k?'on':''} onClick=${()=>setVis(k)}>${l}</button>`)}</div>
-  <div className="kb">${cols.map(c=>{const cs=cards.filter(x=>x.col===c.id);
+  <div className="kb">${cols.map(c=>{const cs=ordenar(cards.filter(x=>x.col===c.id));
    return html`<div key=${c.id} className=${'col'+(over===c.id?' over':'')} onDragOver=${e=>{e.preventDefault();over!==c.id&&setOver(c.id)}} onDragLeave=${()=>setOver(o=>o===c.id?null:o)} onDrop=${e=>{e.preventDefault();soltar(c.id,drag.current)}}>
     <div className="h"><span className="dot" style=${{background:c.cor}}></span><span style=${{flex:1}}>${c.nome}</span><span className="badge">${cs.length}</span></div>
     ${pode('fat')&&cs.length>0&&html`<div className="sm mut tab" style=${{padding:'0 12px 8px',marginTop:-6}}>${moeda(sum(cs,x=>x.p.total))}${c.exigePagamento?' · exige pagamento':''}</div>`}
-    <div className="bd">${cs.map(x=>html`<${Cartao} key=${x.k} x=${x} vis=${vis} cols=${cols} pode=${pode} abrir=${abrir} onDrag=${()=>drag.current=x} onMover=${id=>soltar(id,x)}/>`)}</div></div>`})}</div></div>`}
+    <div className="bd">${cs.map((x,i)=>html`<div key=${x.k} className=${'kbslot'+(alvo&&alvo.k===x.k?(alvo.depois?' depois':' antes'):'')}
+      onDragOver=${e=>{e.preventDefault();e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();const d=e.clientY>r.top+r.height/2;if(!alvo||alvo.k!==x.k||alvo.depois!==d)setAlvo({k:x.k,depois:d});over!==c.id&&setOver(c.id)}}
+      onDragLeave=${()=>setAlvo(a=>a&&a.k===x.k?null:a)}
+      onDrop=${e=>{e.preventDefault();e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();reordenar(c.id,drag.current,x,e.clientY>r.top+r.height/2)}}>
+      ${vis==='geral'&&cs.length>1&&html`<div className="sm mut" style=${{fontSize:10,margin:'0 0 2px 4px'}}>${i+1}º</div>`}<${Cartao} x=${x} vis=${vis} cols=${cols} pode=${pode} abrir=${abrir} onDrag=${()=>drag.current=x} onMover=${id=>soltar(id,x)}/></div>`)}</div></div>`})}</div></div>`}
 function Cartao({x,vis,cols,pode,abrir,onDrag,onMover}){const p=x.p;const ops=Object.values(p.ordens||{});const pc=ops.length?Math.round(ops.filter(o=>o==='concluida').length/ops.length*100):null;
  const at=p.previsao&&new Date(p.previsao)<new Date()&&['aguardando','em_producao'].includes(p.statusProd);const m=(p.totais?.mt||0)+(p.totais?.mu||0);const wa=waLink(p.clienteWhats,'Olá, '+(p.clienteNome||'').split(' ')[0]+'! Sobre o pedido #'+p.numero+':');
  return html`<div className=${'tk'+(p.prioridade==='urgente'?' urg':p.prioridade==='alta'?' alta':'')} draggable="true" onDragStart=${e=>{onDrag();e.dataTransfer.effectAllowed='move';try{e.dataTransfer.setData('text/plain',x.k)}catch(_){}}}>
