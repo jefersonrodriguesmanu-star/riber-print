@@ -2769,11 +2769,20 @@ function App(){
  const meuPapel=pap.rows.find(r=>r.id===me)||{};const papel=owner?'admin':meuPapel.papel||null;const [,tickH]=useState(0);useEffect(()=>{const i=setInterval(()=>tickH(x=>x+1),30000);return()=>clearInterval(i)},[]);const foraHorario=!owner&&!!meuPapel.papel&&!noHorario(meuPapel.horario);
  BAIXA={...BAIXA_PADRAO,...(cfg.baixaPedido||{})};
  const pode=useCallback(k=>{if(!papel)return false;if(papel!=='admin'&&Array.isArray(meuPapel.perms))return meuPapel.perms.includes(k);const p=PAPEIS[papel];return!!p&&(p.perms==='*'||p.perms.includes(k))},[papel,JSON.stringify(meuPapel.perms||null)]);
- // rastreios: confere sozinho os pedidos com etiqueta e sem código (no máximo a cada 2 h por pedido)
- const rastreando=useRef(false);
- useEffect(()=>{if(!db||!ONLINE()||rastreando.current||!ped.ok||!(owner||pode('editar')))return;const lim=Date.now()-2*36e5;
-  const fila=ped.rows.filter(p=>p.etiqueta&&p.etiqueta.id&&p.etiqueta.gerada&&!p.etiqueta.rastreio&&!p.cancelado&&(!p.etiqueta.verificadoEm||Date.parse(p.etiqueta.verificadoEm)<lim)).slice(0,8);if(!fila.length)return;rastreando.current=true;
-  (async()=>{for(const p of fila){try{const t=await meAcao({acao:'rastrear',id:p.etiqueta.id});await db.doc('pedidos/'+p.id).update({etiqueta:{...p.etiqueta,verificadoEm:new Date().toISOString(),...(t.rastreio?{rastreio:t.rastreio,link:t.link||null,status:t.status}:{})}});if(t.rastreio)toast('Rastreio do pedido #'+p.numero+' disponível — envie ao cliente pelo Dashboard')}catch(e){break}}})().finally(()=>{rastreando.current=false})},[db,ped.ok,papel]);
+ // rastreios Melhor Envio: confere sozinho código, postagem e entrega de todos os pedidos com etiqueta ainda não entregues (a cada 1 h por pedido; sem código, a cada 30 min)
+ const rastreando=useRef(false);const [tickR,setTickR]=useState(0);useEffect(()=>{const t=setInterval(()=>setTickR(x=>x+1),10*6e4);return()=>clearInterval(t)},[]);
+ useEffect(()=>{if(!db||!ONLINE()||rastreando.current||!ped.ok||!(owner||pode('editar')))return;
+  const fila=ped.rows.filter(p=>p.etiqueta&&p.etiqueta.id&&p.etiqueta.gerada&&!p.cancelado&&p.statusProd!=='entregue'&&!p.etiqueta.entregueEm&&(!p.etiqueta.verificadoEm||Date.parse(p.etiqueta.verificadoEm)<Date.now()-(p.etiqueta.rastreio?36e5:18e5))).slice(0,15);if(!fila.length)return;rastreando.current=true;
+  (async()=>{for(const p of fila){   try{const t=await meAcao({acao:'rastrear',id:p.etiqueta.id});const ag=new Date().toISOString();
+    const et={...p.etiqueta,verificadoEm:ag,...(t.rastreio?{rastreio:t.rastreio}:{}),...(t.link?{link:t.link}:{}),...(t.status?{status:t.status}:{}),...(t.postado?{postadoEm:t.postado}:{}),...(t.entregue?{entregueEm:t.entregue}:{})};
+    const novoCod=t.rastreio&&!p.etiqueta.rastreio;const postou=(t.postado||['posted','delivered'].includes(t.status))&&!p.postadoEm;const entregou=!!t.entregue||t.status==='delivered';
+    const hist=[...(p.historico||[])];if(postou)hist.push({em:ag,por:'Melhor Envio',tipo:'entrega',obs:'Postado (Melhor Envio)'+(t.rastreio?' · rastreio '+t.rastreio:'')});
+    let np={...p,etiqueta:et,historico:hist,...(postou?{postadoEm:t.postado||ag,postadoPor:'Melhor Envio'}:{})};
+    const etEnt=cfg.etapas.find(e=>e.id==='entregue')||cfg.etapas.find(e=>e.status==='entregue'&&!e.cancela);const etEnv=cfg.etapas.find(e=>e.id==='enviado');
+    if(entregou&&etEnt){np={...np,entregaInfo:{por:'Melhor Envio',em:t.entregue||ag,recebedor:''}};await moverPedido({db,p:np,etapa:etEnt,me:'Melhor Envio',pode:k=>k==='mover',produtos:prd.rows,toast:()=>{}});toast('📦 Pedido #'+p.numero+' entregue (Melhor Envio)')}
+    else if(postou&&etEnv&&p.etapaId!==etEnv.id&&p.statusProd==='pronto'){await moverPedido({db,p:np,etapa:etEnv,me:'Melhor Envio',pode:k=>k==='mover',produtos:prd.rows,toast:()=>{}})}
+    else await db.doc('pedidos/'+p.id).update({etiqueta:et,historico:hist,...(postou?{postadoEm:np.postadoEm,postadoPor:'Melhor Envio'}:{})});
+    if(novoCod)toast('Rastreio do pedido #'+p.numero+' disponível: '+t.rastreio)}catch(e){break}}})().finally(()=>{rastreando.current=false})},[db,ped.ok,papel,tickR]);
  // fechamentos automáticos (períodos encerrados após a data em que foi ligado)
  const fechando=useRef(false);
  useEffect(()=>{const A=cfg.fechAuto;if(!db||!A||!A.ativo||!A.desde||fechando.current||!ped.ok||!fch.ok||!cli.ok||!(owner||pode('pagar')))return;
@@ -4759,9 +4768,9 @@ function Expedicao(ctx){const {db,pedidos,clientes,cfg,me,pode,toast,abrir}=ctx;
   if(!e||p.etapaId===e.id){const {id:_x,...c}=normalizar(np,me);await db.doc('pedidos/'+p.id).set(c);msg&&toast(msg);return}
   await moverPedido({...ctxM,p:np,etapa:e,pode:k=>k==='mover'?podeM:pode(k)})};
  const nome1=p=>p.clienteNome?' '+String(p.clienteNome).split(' ')[0]:'';const emp=cfg.empresa?.nome||'RIBER PRINT';
- const linkRastreio=r=>'https://www.melhorrastreio.com.br/rastreio/'+encodeURIComponent(r);
+ const linkRastreio=(r,p)=>(p&&p.etiqueta&&p.etiqueta.link)||'https://www.melhorrastreio.com.br/rastreio/'+encodeURIComponent(r);
  const msgPronto=p=>'Olá'+nome1(p)+'! Seu pedido #'+p.numero+' da '+emp+' está pronto para retirada.'+(Number(p.saldo||0)>0.009?' Valor a pagar na retirada: '+moeda(p.saldo)+'.':'')+(cfg.empresa?.endereco?' Endereço: '+cfg.empresa.endereco+'.':'')+' Te esperamos!';
- const msgEnviado=(p,r)=>'Olá'+nome1(p)+'! Seu pedido #'+p.numero+' da '+emp+' foi enviado'+(p.freteServico?' por '+p.freteServico:'')+'.'+(r?' Código de rastreio: '+r+' — acompanhe em '+linkRastreio(r):'');
+ const msgEnviado=(p,r)=>'Olá'+nome1(p)+'! Seu pedido #'+p.numero+' da '+emp+' foi enviado'+(p.freteServico?' por '+p.freteServico:'')+'.'+(r?' Código de rastreio: '+r+' — acompanhe em '+linkRastreio(r,p):'');
  const whatsDe=p=>p.clienteWhats||cliDe(p)?.whatsapp||'';
  const abrirWa=(p,m)=>{const l=waLink(whatsDe(p),m);if(!l)return toast('Cliente sem WhatsApp cadastrado',1);window.open(l,'_blank','noopener')};
  const confirmar=async()=>{const {t,p}=dlg;setS(true);try{
@@ -4776,7 +4785,7 @@ function Expedicao(ctx){const {db,pedidos,clientes,cfg,me,pode,toast,abrir}=ctx;
     <div style=${{textAlign:'right'}}>${p.interno?html`<${Badge} c="b-info">Loja própria<//>`:saldo>0.009?html`<${Badge} c="b-red">Falta ${moeda(saldo)}<//>`:html`<${Badge} c="b-ok">Pago<//>`}<div className="sm mut">${(cfg.etapas.find(e=>e.id===p.etapaId)||{}).nome||''}</div></div></div>
    <div className="sm mut">${num((p.totais?.mt||0)+(p.totais?.mu||0))} m · ${(p.itens||[]).length} item(ns)${p.previsao?' · previsão '+dBR(String(p.previsao).slice(0,10)):''}</div>
    ${aba==='enviar'&&html`<div className="sm">${p.freteServico?'🚚 '+p.freteServico+(p.fretePrazo?' · '+p.fretePrazo+' dia(s)':''):'🚚 Frete'}${p.freteGratis?' · frete grátis':p.frete?' · '+moeda(p.frete):''}${p.cepEntrega?' · CEP '+cepF(p.cepEntrega):''}</div>
-    ${r&&html`<div className="sm">Rastreio: <a href=${linkRastreio(r)} target="_blank" rel="noopener"><b>${r}</b></a></div>`}${p.postadoEm&&html`<div className="sm" style=${{color:'var(--ok)'}}>Postado ${haQuanto(p.postadoEm)}</div>`}`}
+    ${r&&html`<div className="sm">Rastreio: <a href=${linkRastreio(r,p)} target="_blank" rel="noopener"><b>${r}</b></a></div>`}${p.postadoEm&&html`<div className="sm" style=${{color:'var(--ok)'}}>Postado ${haQuanto(p.postadoEm)}</div>`}`}
    ${aba==='ml'&&html`<div className="sm">🟡 Postar no ponto de envio Mercado Livre${p.postadoEm?html` · <span style=${{color:'var(--ok)'}}>postado ${haQuanto(p.postadoEm)}</span>`:subOk==='prontos'?(minFalta>0?' · faltam '+(minFalta>=60?Math.floor(minFalta/60)+'h'+String(minFalta%60).padStart(2,'0'):minFalta+' min'):' · prazo de hoje encerrado'):''}</div>`}
    ${aba==='retirar'&&p.avisadoProntoEm&&html`<div className="sm" style=${{color:'var(--ok)'}}>Cliente avisado ${haQuanto(p.avisadoProntoEm)}</div>`}
    ${p.entregueEm&&p.statusProd==='entregue'&&html`<div className="sm" style=${{color:'var(--ok)'}}>${aba==='retirar'?'Retirado':'Entregue'} ${haQuanto(p.entregueEm)}${p.entregaInfo?.recebedor?' · '+p.entregaInfo.recebedor:''}</div>`}
@@ -4784,7 +4793,7 @@ function Expedicao(ctx){const {db,pedidos,clientes,cfg,me,pode,toast,abrir}=ctx;
     ${aba==='enviar'&&p.statusProd!=='entregue'&&html`<button className="btn sm" onClick=${()=>abrir('etiqueta',p.id)}>🏷️ ${p.etiqueta&&p.etiqueta.url?'Etiqueta de envio':'Emitir etiqueta'}</button>`}
     ${podeM&&subOk==='producao'&&html`<button className="btn sm" onClick=${()=>pronto(p)}>✓ Marcar como pronto</button>`}
     ${podeM&&(aba==='enviar'||aba==='ml')&&subOk==='prontos'&&html`<button className="btn sm p" onClick=${()=>setDlg({t:'postar',p,rastreio:r||'',avisar:aba==='enviar'&&!!tel,ml:aba==='ml'})}>📦 ${aba==='ml'?'Postado no ponto ML':'Postado / enviado'}</button>`}
-    ${aba==='enviar'&&subOk==='enviados'&&tel&&html`<button className="btn sm" onClick=${()=>abrirWa(p,msgEnviado(p,r))}>💬 Mandar rastreio</button>`}
+    ${(aba==='enviar'||aba==='ml')&&subOk==='enviados'&&tel&&html`<button className="btn sm" onClick=${()=>enviarAcomp({db,p,cfg,toast,whats:tel})} title="Manda o link de acompanhamento do nosso site, que mostra o rastreio">💬 Mandar rastreio (link do site)</button>`}
     ${podeM&&(aba==='enviar'||aba==='ml')&&subOk==='enviados'&&html`<button className="btn sm p" style=${{background:'var(--ok)',borderColor:'var(--ok)'}} onClick=${()=>setDlg({t:'entregue',p,quem:''})}>✓ ${aba==='ml'?'Concluído':'Entregue'}</button>`}
     ${aba==='retirar'&&subOk==='prontos'&&tel&&html`<button className="btn sm" onClick=${()=>avisar(p)}>💬 ${p.avisadoProntoEm?'Avisar de novo':'Avisar que está pronto'}</button>`}
     ${podeM&&aba==='retirar'&&subOk==='prontos'&&html`<button className="btn sm p" style=${{background:'var(--ok)',borderColor:'var(--ok)'}} onClick=${()=>setDlg({t:'retirado',p,quem:''})}>✓ Cliente retirou</button>`}
