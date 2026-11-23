@@ -2799,7 +2799,7 @@ function App(){
   if(e.altKey&&e.code==='KeyN'&&!['INPUT','TEXTAREA','SELECT'].includes(tg)&&pode('criar')){e.preventDefault();setForm({t:'pedido'})}};addEventListener('keydown',k);return()=>removeEventListener('keydown',k)},[pode]);
  if(db===undefined)return html`<div className="empty" style=${{minHeight:'60vh',display:'grid',placeItems:'center'}}>Conectando ao banco de dados…</div>`;
  if(db===null)return html`<div className="empty" style=${{minHeight:'60vh',display:'grid',placeItems:'center'}}><div><div className="b">Banco de dados indisponível nesta visualização.</div><div className="sm">Abra o link do sistema com sua conta Claude conectada.</div></div></div>`;
- const NAV=[['Visão geral',[['dashboard','Dashboard','dash'],['monitor','Vendas ao vivo','trend']]],['Comercial',[['pedidos','Pedidos','ped'],['pedidoartes','Pedido com artes','up'],['cotacoes','Cotações'+(cot.rows.filter(x=>x.status==='aprovada').length?' ('+cot.rows.filter(x=>x.status==='aprovada').length+')':''),'ped'],['online','Pedidos online'+(sol.rows.filter(x=>x.status==='nova').length?' ('+sol.rows.filter(x=>x.status==='nova').length+')':''),'dl'],['kanban','Kanban','kb'],['clientes','Clientes','cli'],['produtos','Produtos e serviços','prd']]],['Financeiro',[['fechamentos','Fechamentos','fch'],['custos','Custos e simulador','cus'],['relatorios','Relatórios','print']]],['Marketing',[['precos','Preços do site','cus'],['metricas','Métricas do site','trend'],['disparos','Enviar no WhatsApp','cli']]],['Produção',[['filamaq','Fila por máquina','print'],['impressao','Central de impressão','print'],['maquinas','Máquinas','cpu'],['entregas','Entregas'+(ped.rows.filter(p=>p.entrega==='entrega_local'&&!p.cancelado&&p.statusProd==='pronto').length?' ('+ped.rows.filter(p=>p.entrega==='entrega_local'&&!p.cancelado&&p.statusProd==='pronto').length+')':''),'box'],['descartes','Descartes','trash'],['estampas','Estampas por SKU','box']]],['Estoque',[['insumos','Matéria-prima','box'],['compras','Compras e fornecedores','ped']]],['Administração',[['colaboradores','Colaboradores','cli'],['equipe','Usuários e permissões','eq'],['config','Configurações','cfg']]]];
+ const NAV=[['Visão geral',[['dashboard','Dashboard','dash'],['monitor','Vendas ao vivo','trend']]],['Comercial',[['pedidos','Pedidos','ped'],['expedicao','Expedição'+((n=>n?' ('+n+')':'')(ped.rows.filter(p=>!p.cancelado&&p.origem!=='scalle'&&p.statusProd==='pronto'&&!(p.entrega==='retirada'&&p.interno)&&!(p.entrega==='correios'&&(p.postadoEm||p.etapaId==='enviado'))).length)),'box'],['pedidoartes','Pedido com artes','up'],['cotacoes','Cotações'+(cot.rows.filter(x=>x.status==='aprovada').length?' ('+cot.rows.filter(x=>x.status==='aprovada').length+')':''),'ped'],['online','Pedidos online'+(sol.rows.filter(x=>x.status==='nova').length?' ('+sol.rows.filter(x=>x.status==='nova').length+')':''),'dl'],['kanban','Kanban','kb'],['clientes','Clientes','cli'],['produtos','Produtos e serviços','prd']]],['Financeiro',[['fechamentos','Fechamentos','fch'],['custos','Custos e simulador','cus'],['relatorios','Relatórios','print']]],['Marketing',[['precos','Preços do site','cus'],['metricas','Métricas do site','trend'],['disparos','Enviar no WhatsApp','cli']]],['Produção',[['filamaq','Fila por máquina','print'],['impressao','Central de impressão','print'],['maquinas','Máquinas','cpu'],['entregas','Entregas'+(ped.rows.filter(p=>p.entrega==='entrega_local'&&!p.cancelado&&p.statusProd==='pronto').length?' ('+ped.rows.filter(p=>p.entrega==='entrega_local'&&!p.cancelado&&p.statusProd==='pronto').length+')':''),'box'],['descartes','Descartes','trash'],['estampas','Estampas por SKU','box']]],['Estoque',[['insumos','Matéria-prima','box'],['compras','Compras e fornecedores','ped']]],['Administração',[['colaboradores','Colaboradores','cli'],['equipe','Usuários e permissões','eq'],['config','Configurações','cfg']]]];
  const lento=[cli,prd,ped].some(c=>c.err==='lento');
  let page;
  if(!papel)page=html`<div className="card pad" style=${{maxWidth:520,margin:'60px auto',textAlign:'center'}}><h2>Acesso aguardando liberação</h2><p className="mut">Você já está registrado. Peça ao administrador para definir seu papel em <b>Equipe e permissões</b>.</p></div>`;
@@ -2810,6 +2810,7 @@ function App(){
  else if(view==='equipe')page=html`<${Equipe} ...${ctx} equipe=${eqp.rows} papeis=${pap.rows}/>`;
  else if(view==='config')page=html`<${Config} ...${ctx}/>`;
  else if(view==='impressao')page=html`<${Impressoes} ...${ctx}/>`;
+ else if(view==='expedicao')page=html`<${Expedicao} ...${ctx}/>`;
  else if(view==='filamaq')page=html`<${FilaMaquinas} ...${ctx}/>`;
  else if(view==='maquinas')page=html`<${Maquinas} ...${ctx}/>`;
  else if(view==='descartes')page=html`<${Descartes} ...${ctx}/>`;
@@ -4732,6 +4733,76 @@ function endEntrega(p,cli){const d=p.destinatario||{};if(d.endereco)return{linha
 const endTexto=e=>[e.linha,e.bairro,e.cidade,e.cep&&'CEP '+String(e.cep).replace(/(\d{5})(\d{3})/,'$1-$2')].filter(Boolean).join(' · ');
 const mapaUrl=e=>'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(e.lat&&e.lng?e.lat+','+e.lng:[e.linha,e.bairro,e.cidade,'Brasil'].filter(Boolean).join(', '));
 const wazeUrl=e=>e.lat&&e.lng?'https://waze.com/ul?ll='+e.lat+','+e.lng+'&navigate=yes':'https://waze.com/ul?q='+encodeURIComponent([e.linha,e.cidade].filter(Boolean).join(', '))+'&navigate=yes';
+/* ---------------- expedição: enviar (frete), retirar (cliente busca) e entregar (nossos entregadores) ---------------- */
+function Expedicao(ctx){const {db,pedidos,clientes,cfg,me,pode,toast,abrir}=ctx;
+ const [aba,setAba]=useState(()=>{try{return localStorage.getItem('rp_exp_aba')||'enviar'}catch(e){return 'enviar'}});const ir=a=>{setAba(a);try{localStorage.setItem('rp_exp_aba',a)}catch(e){}};
+ const [sub,setSub]=useState('prontos');const [busca,setBusca]=useState('');const [dlg,setDlg]=useState(null);const [s,setS]=useState(false);
+ const podeM=pode('mover')||pode('entregas');const cliDe=p=>clientes.find(c=>c.id===p.clienteId);const hoje=diaSP();
+ const base=pedidos.filter(p=>!p.cancelado&&p.origem!=='scalle');
+ const filtra=l=>l.filter(p=>!busca||(p.numero+' '+(p.clienteNome||'')+' '+(p.etiqueta?.rastreio||'')).toLowerCase().includes(busca.toLowerCase()));
+ const et=id=>cfg.etapas.find(e=>e.id===id);const etEnt=et('entregue')||cfg.etapas.find(e=>e.status==='entregue'&&!e.cancela);
+ const enviados=p=>!!(p.postadoEm||p.etapaId==='enviado');
+ const env=base.filter(p=>p.entrega==='correios');const ret=base.filter(p=>p.entrega==='retirada'&&!p.interno);const loc=base.filter(p=>p.entrega==='entrega_local');
+ const G={
+  enviar:{prontos:env.filter(p=>p.statusProd==='pronto'&&!enviados(p)),enviados:env.filter(p=>p.statusProd==='pronto'&&enviados(p)),producao:env.filter(p=>['aguardando','em_producao'].includes(p.statusProd)),feitos:env.filter(p=>p.statusProd==='entregue'&&p.entregueEm&&Date.now()-Date.parse(p.entregueEm)<7*864e5)},
+  retirar:{prontos:ret.filter(p=>p.statusProd==='pronto'),producao:ret.filter(p=>['aguardando','em_producao'].includes(p.statusProd)),feitos:ret.filter(p=>p.statusProd==='entregue'&&p.entregueEm&&diaSP(p.entregueEm)===hoje)}};
+ const nEnt=loc.filter(p=>p.statusProd==='pronto').length;
+ const SUBS={enviar:[['prontos','Prontos para enviar'],['enviados','Postados / a caminho'],['producao','Ainda em produção'],['feitos','Entregues (7 dias)']],retirar:[['prontos','Prontos para retirar'],['producao','Ainda em produção'],['feitos','Retirados hoje']]};
+ const subOk=SUBS[aba]&&SUBS[aba].some(x=>x[0]===sub)?sub:'prontos';
+ const lista=aba==='entregar'?[]:filtra(G[aba][subOk]||[]).sort((a,b)=>String(a.etapaDesde||a.criadoEm||'').localeCompare(String(b.etapaDesde||b.criadoEm||'')));
+ const ctxM={...ctx,abrir:null};
+ const mover=async(p,etapaId,extra,msg)=>{const e=et(etapaId)||(etapaId==='entregue'?etEnt:null);const np={...p,...extra};
+  if(!e||p.etapaId===e.id){const {id:_x,...c}=normalizar(np,me);await db.doc('pedidos/'+p.id).set(c);msg&&toast(msg);return}
+  await moverPedido({...ctxM,p:np,etapa:e,pode:k=>k==='mover'?podeM:pode(k)})};
+ const nome1=p=>p.clienteNome?' '+String(p.clienteNome).split(' ')[0]:'';const emp=cfg.empresa?.nome||'RIBER PRINT';
+ const linkRastreio=r=>'https://www.melhorrastreio.com.br/rastreio/'+encodeURIComponent(r);
+ const msgPronto=p=>'Olá'+nome1(p)+'! Seu pedido #'+p.numero+' da '+emp+' está pronto para retirada.'+(Number(p.saldo||0)>0.009?' Valor a pagar na retirada: '+moeda(p.saldo)+'.':'')+(cfg.empresa?.endereco?' Endereço: '+cfg.empresa.endereco+'.':'')+' Te esperamos!';
+ const msgEnviado=(p,r)=>'Olá'+nome1(p)+'! Seu pedido #'+p.numero+' da '+emp+' foi enviado'+(p.freteServico?' por '+p.freteServico:'')+'.'+(r?' Código de rastreio: '+r+' — acompanhe em '+linkRastreio(r):'');
+ const whatsDe=p=>p.clienteWhats||cliDe(p)?.whatsapp||'';
+ const abrirWa=(p,m)=>{const l=waLink(whatsDe(p),m);if(!l)return toast('Cliente sem WhatsApp cadastrado',1);window.open(l,'_blank','noopener')};
+ const confirmar=async()=>{const {t,p}=dlg;setS(true);try{
+   if(t==='postar'){const r=String(dlg.rastreio||'').trim().toUpperCase();await mover(p,'enviado',{postadoEm:new Date().toISOString(),postadoPor:me,...(r?{etiqueta:{...(p.etiqueta||{}),rastreio:r}}:{}),historico:[...(p.historico||[]),{em:new Date().toISOString(),por:me,tipo:'entrega',obs:'Postado'+(r?' · rastreio '+r:'')}]},'#'+p.numero+' marcado como enviado');if(dlg.avisar)abrirWa(p,msgEnviado(p,r||p.etiqueta?.rastreio))}
+   else if(t==='retirado'||t==='entregue'){await mover(p,'entregue',{entregaInfo:{por:me,em:new Date().toISOString(),recebedor:dlg.quem||''}},'#'+p.numero+(t==='retirado'?' retirado':' entregue'))}
+   setDlg(null)}catch(e){toast('Erro: '+(e.message||e.code),1)}finally{setS(false)}};
+ const avisar=async p=>{abrirWa(p,msgPronto(p));try{await db.doc('pedidos/'+p.id).update({avisadoProntoEm:new Date().toISOString(),historico:[...(p.historico||[]),{em:new Date().toISOString(),por:me,tipo:'entrega',obs:'Cliente avisado que está pronto para retirada'}]})}catch(e){}};
+ const pronto=p=>mover(p,p.entrega==='retirada'?'pronto_retirada':'pronto_envio',{},'#'+p.numero+' pronto');
+ const Card=p=>{const saldo=Number(p.saldo||0);const r=p.etiqueta?.rastreio;const tel=whatsDe(p);
+  return html`<div key=${p.id} className="card pad" style=${{display:'grid',gap:8}}>
+   <div className="row between" style=${{alignItems:'flex-start'}}><div><button style=${{border:0,background:'none',padding:0,fontSize:19,fontWeight:800,cursor:'pointer'}} onClick=${()=>abrir('pedido',p.id)}>#${p.numero}</button><div style=${{fontWeight:600}}>${p.clienteNome}</div></div>
+    <div style=${{textAlign:'right'}}>${p.interno?html`<${Badge} c="b-info">Loja própria<//>`:saldo>0.009?html`<${Badge} c="b-red">Falta ${moeda(saldo)}<//>`:html`<${Badge} c="b-ok">Pago<//>`}<div className="sm mut">${(cfg.etapas.find(e=>e.id===p.etapaId)||{}).nome||''}</div></div></div>
+   <div className="sm mut">${num((p.totais?.mt||0)+(p.totais?.mu||0))} m · ${(p.itens||[]).length} item(ns)${p.previsao?' · previsão '+dBR(String(p.previsao).slice(0,10)):''}</div>
+   ${aba==='enviar'&&html`<div className="sm">${p.freteServico?'🚚 '+p.freteServico+(p.fretePrazo?' · '+p.fretePrazo+' dia(s)':''):'🚚 Frete'}${p.freteGratis?' · frete grátis':p.frete?' · '+moeda(p.frete):''}${p.cepEntrega?' · CEP '+cepF(p.cepEntrega):''}</div>
+    ${r&&html`<div className="sm">Rastreio: <a href=${linkRastreio(r)} target="_blank" rel="noopener"><b>${r}</b></a></div>`}${p.postadoEm&&html`<div className="sm" style=${{color:'var(--ok)'}}>Postado ${haQuanto(p.postadoEm)}</div>`}`}
+   ${aba==='retirar'&&p.avisadoProntoEm&&html`<div className="sm" style=${{color:'var(--ok)'}}>Cliente avisado ${haQuanto(p.avisadoProntoEm)}</div>`}
+   ${p.entregueEm&&p.statusProd==='entregue'&&html`<div className="sm" style=${{color:'var(--ok)'}}>${aba==='retirar'?'Retirado':'Entregue'} ${haQuanto(p.entregueEm)}${p.entregaInfo?.recebedor?' · '+p.entregaInfo.recebedor:''}</div>`}
+   <div className="row" style=${{gap:6,flexWrap:'wrap'}}>
+    ${aba==='enviar'&&p.statusProd!=='entregue'&&html`<button className="btn sm" onClick=${()=>abrir('etiqueta',p.id)}>🏷️ ${p.etiqueta&&p.etiqueta.url?'Etiqueta de envio':'Emitir etiqueta'}</button>`}
+    ${podeM&&subOk==='producao'&&html`<button className="btn sm" onClick=${()=>pronto(p)}>✓ Marcar como pronto</button>`}
+    ${podeM&&aba==='enviar'&&subOk==='prontos'&&html`<button className="btn sm p" onClick=${()=>setDlg({t:'postar',p,rastreio:r||'',avisar:!!tel})}>📦 Postado / enviado</button>`}
+    ${aba==='enviar'&&subOk==='enviados'&&tel&&html`<button className="btn sm" onClick=${()=>abrirWa(p,msgEnviado(p,r))}>💬 Mandar rastreio</button>`}
+    ${podeM&&aba==='enviar'&&subOk==='enviados'&&html`<button className="btn sm p" style=${{background:'var(--ok)',borderColor:'var(--ok)'}} onClick=${()=>setDlg({t:'entregue',p,quem:''})}>✓ Entregue</button>`}
+    ${aba==='retirar'&&subOk==='prontos'&&tel&&html`<button className="btn sm" onClick=${()=>avisar(p)}>💬 ${p.avisadoProntoEm?'Avisar de novo':'Avisar que está pronto'}</button>`}
+    ${podeM&&aba==='retirar'&&subOk==='prontos'&&html`<button className="btn sm p" style=${{background:'var(--ok)',borderColor:'var(--ok)'}} onClick=${()=>setDlg({t:'retirado',p,quem:''})}>✓ Cliente retirou</button>`}
+   </div></div>`};
+ const romaneio=()=>{const L=filtra(G.enviar.prontos.concat(G.enviar.enviados.filter(p=>p.postadoEm&&diaSP(p.postadoEm)===hoje)));if(!L.length)return toast('Nada para listar',1);
+  const w=window.open('','_blank');if(!w)return;w.document.write('<html><head><meta charset="utf-8"><title>Romaneio de postagem '+dBR(hoje)+'</title><style>body{font:13px system-ui;margin:24px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #999;padding:6px;text-align:left}</style></head><body><h2>'+emp+' · Romaneio de postagem · '+dBR(hoje)+'</h2><table><tr><th>Pedido</th><th>Cliente</th><th>Serviço</th><th>CEP</th><th>Rastreio</th><th>Conferido</th></tr>'+L.map(p=>'<tr><td>#'+p.numero+'</td><td>'+String(p.clienteNome||'').replace(/</g,'&lt;')+'</td><td>'+(p.freteServico||'')+'</td><td>'+cepF(p.cepEntrega||'')+'</td><td>'+(p.etiqueta?.rastreio||'')+'</td><td></td></tr>').join('')+'</table><p>Total: '+L.length+' volume(s)</p><script>print()<\/script></body></html>');w.document.close()};
+ return html`<div>
+  <div className="row between" style=${{marginBottom:12,alignItems:'flex-end',flexWrap:'wrap',gap:8}}><div><h1>Expedição</h1><div className="sub">Pedidos para enviar por frete, para o cliente retirar e para nossos entregadores levarem</div></div>
+   ${aba!=='entregar'&&html`<input className="in" style=${{maxWidth:240}} placeholder="Buscar nº, cliente ou rastreio" value=${busca} onChange=${e=>setBusca(e.target.value)}/>`}</div>
+  <div className="tabs" style=${{marginBottom:12,flexWrap:'wrap'}}>
+   ${[['enviar','📦 Enviar (frete) ('+G.enviar.prontos.length+')'],['retirar','🏪 Retirar na loja ('+G.retirar.prontos.length+')'],['entregar','🛵 Entregar ('+nEnt+')']].map(([k,l])=>html`<button key=${k} className=${aba===k?'on':''} style=${{fontWeight:700}} onClick=${()=>{ir(k);setSub('prontos')}}>${l}</button>`)}</div>
+  ${aba==='entregar'?html`<${Entregas} ...${ctx} embutido=${true}/>`:html`
+   <div className="row between" style=${{marginBottom:10,flexWrap:'wrap',gap:8}}><div className="tabs" style=${{flexWrap:'wrap'}}>${SUBS[aba].map(([k,l])=>html`<button key=${k} className=${subOk===k?'on':''} onClick=${()=>setSub(k)}>${l} (${(G[aba][k]||[]).length})</button>`)}</div>
+    ${aba==='enviar'&&html`<button className="btn sm" onClick=${romaneio}><${Ic} n="print" s=${13}/>Romaneio de postagem</button>`}</div>
+   ${lista.length===0?html`<div className="card"><${Empty} t="Nenhum pedido aqui" s=${subOk==='prontos'?'Quando um pedido ficar pronto ele aparece aqui.':''}/></div>`:html`<div style=${{display:'grid',gap:10,gridTemplateColumns:'repeat(auto-fill,minmax(310px,1fr))'}}>${lista.map(Card)}</div>`}`}
+  ${dlg&&html`<${Modal} title=${(dlg.t==='postar'?'Enviar':dlg.t==='retirado'?'Retirada':'Entrega')+' do pedido #'+dlg.p.numero} sub=${dlg.p.clienteNome} onClose=${()=>setDlg(null)}><div style=${{display:'grid',gap:10}}>
+   ${dlg.t==='postar'?html`<label className="sm">Código de rastreio (opcional)<input className="in" value=${dlg.rastreio} onChange=${e=>setDlg({...dlg,rastreio:e.target.value})} placeholder="ex.: AA123456789BR"/></label>
+     <label className="row sm" style=${{gap:6}}><input type="checkbox" checked=${dlg.avisar} onChange=${e=>setDlg({...dlg,avisar:e.target.checked})}/>Abrir o WhatsApp do cliente com a mensagem de envio</label>`
+    :html`${Number(dlg.p.saldo||0)>0.009&&!dlg.p.interno&&html`<div className="card pad" style=${{borderColor:'var(--red2)'}}><b style=${{color:'var(--red2)'}}>Falta receber ${moeda(dlg.p.saldo)}</b><div className="sm">Registre o pagamento no pedido se o cliente pagou agora.</div></div>`}
+     <label className="sm">${dlg.t==='retirado'?'Quem retirou':'Quem recebeu'} (opcional)<input className="in" value=${dlg.quem} onChange=${e=>setDlg({...dlg,quem:e.target.value})} placeholder="nome"/></label>`}
+   <div className="row" style=${{justifyContent:'flex-end'}}><button className="btn" onClick=${()=>setDlg(null)}>Voltar</button><button className="btn p" disabled=${s} onClick=${confirmar}>${s?'Salvando…':'Confirmar'}</button></div></div><//>`}
+ </div>`}
+
 function Entregas(ctx){const {db,pedidos,clientes,cfg,me,pode,toast,produtos,abrir,user}=ctx;const [aba,setAba]=useState('fila');const [conf,setConf]=useState(null);const [busca,setBusca]=useState('');
  const podeEnt=pode('entregas')||pode('mover');
  const locais=pedidos.filter(p=>p.entrega==='entrega_local'&&!p.cancelado);const hoje=diaSP();
@@ -4764,7 +4835,7 @@ function Entregas(ctx){const {db,pedidos,clientes,cfg,me,pode,toast,produtos,abr
     ${abrir&&pode('editar')&&html`<button className="btn sm" onClick=${()=>abrir('pedido',p.id)}>Abrir pedido</button>`}</div></div>`};
  const lista={fila,rota,producao,feito:entregues}[aba];
  return html`<div>
-  <div className="row between" style=${{marginBottom:12,alignItems:'flex-end',flexWrap:'wrap'}}><div><h1>Entregas</h1><div className="sub">Pedidos com "Entrega RIBER PRINT" que já saíram da produção</div></div>
+  <div className="row between" style=${{marginBottom:12,alignItems:'flex-end',flexWrap:'wrap'}}><div>${ctx.embutido?html`<div className="sub">Pedidos com "Entrega RIBER PRINT" (nossos entregadores)</div>`:html`<h1>Entregas</h1><div className="sub">Pedidos com "Entrega RIBER PRINT" que já saíram da produção</div>`}</div>
    <input className="in" style=${{maxWidth:240}} placeholder="Buscar nº, nome ou rua" value=${busca} onChange=${e=>setBusca(e.target.value)}/></div>
   <div className="tabs" style=${{marginBottom:12,flexWrap:'wrap'}}>${[['fila','A entregar ('+fila.length+')'],['rota','Saiu para entrega ('+rota.length+')'],['producao','Ainda em produção ('+producao.length+')'],['feito','Entregues hoje ('+entregues.length+')']].map(([k,l])=>html`<button key=${k} className=${aba===k?'on':''} onClick=${()=>setAba(k)}>${l}</button>`)}</div>
   ${(aba==='fila'||aba==='rota')&&lista.length>1&&html`<div className="row" style=${{marginBottom:10}}><a className="btn" style=${{textDecoration:'none',color:'inherit'}} href=${rotaMaps(lista)} target="_blank" rel="noopener">🗺️ Abrir rota com ${Math.min(9,lista.length)} entregas no Google Maps</a></div>`}
