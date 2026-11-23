@@ -3352,7 +3352,7 @@ function PedidoDetalhe({db,id,pedidos,clientes,produtos,cfg,me,pode,toast,onClos
    ${!p.cancelado&&pode('editar')&&html`<button className="btn" onClick=${()=>{onClose();setForm({t:'pedido',pedido:p})}}>Editar</button>`}
    ${pode('criar')&&html`<button className="btn" onClick=${duplicar}>Duplicar</button>`}
    <button className="btn" onClick=${comprovante}><${Ic} n="dl" s=${15}/>Comprovante</button>${ONLINE()&&!p.cancelado&&html` <button className="btn" onClick=${()=>enviarAcomp({db,p,cfg,toast,whats})}>📍 Acompanhamento</button>`}
-   ${ONLINE()&&(p.arquivos||[]).length>0&&html`<button className="btn" onClick=${()=>baixarTodas(p.arquivos,toast)}><${Ic} n="dl" s=${15}/>Baixar artes (${p.arquivos.length})</button>`}
+   ${ONLINE()&&(p.arquivos||[]).length>0&&html`<${BaixarPngBtn} p=${p} cfg=${cfg} toast=${toast}/>`}
    ${ONLINE()&&p.entrega&&p.entrega!=='retirada'&&!p.cancelado&&html`<button className="btn" onClick=${()=>abrir('etiqueta',p.id)}>${p.etiqueta&&p.etiqueta.url?'Etiqueta de envio':'Gerar etiqueta de envio'}</button>`}
    ${!p.cancelado&&pode('cancelar')&&html`<button className="btn d" onClick=${()=>setDlg('cancel')}>Cancelar</button>`}</div>
   <div className="grid" style=${{gridTemplateColumns:'minmax(0,1fr) 300px',gap:14}}>
@@ -3481,7 +3481,7 @@ function FilaMaquinas(ctx){
     <div className="row sm mut" style=${{gap:6,marginTop:4,flexWrap:'wrap'}}>${p.prioridade==='urgente'&&html`<span className="badge" style=${{background:'#fee2e2',color:'#b91c1c'}}>Urgente</span>`}${p.prioridade==='alta'&&html`<span className="badge" style=${{background:'#fef3c7',color:'#92400e'}}>Alta</span>`}${at&&html`<span className="badge" style=${{background:'#fee2e2',color:'#b91c1c'}}>Atrasado</span>`}
      ${imp?html`<span style=${{color:'#c026d3',fontWeight:700}}>Imprimindo há ${durTxt(agora-Date.parse(p.imprimindoEm||p.etapaDesde||agora))}</span>`:html`<span>espera ${esperaTxt(p.criadoEm).replace('há ','')}</span>`}</div>
     ${p.loteSku&&!(p.arquivos||[]).some(a=>a.montado)&&html`<div style=${{marginTop:6}}><button className="btn sm" disabled=${!!gerando} onClick=${async()=>{const l=(ctx.lotesSku||[]).find(x=>x.pedidoId===p.id);if(!l||!l.layout)return toast('Lote sem montagem salva. Gere de novo em Estampas por SKU.',1);setGerando(p.id);try{const n=await anexarPngLote({db,me,lote:l,prog:m=>/^Enviando/.test(m)&&!/bloco/.test(m)&&toast(m)});toast(n+' PNG anexado(s) ao #'+p.numero)}catch(e){toast(e.message||String(e),1)}finally{setGerando('')}}}>📎 ${gerando===p.id?'Gerando PNG…':'Gerar PNG do lote'}</button></div>`}
-    ${(p.arquivos||[]).some(a=>a.path)&&html`<div className="row" style=${{gap:6,marginTop:6,flexWrap:'wrap'}}>${p.arquivos.filter(a=>a.path).length===1?html`<button className="btn sm" onClick=${()=>baixarArte(p.arquivos.find(a=>a.path),toast)}><${Ic} n="dl" s=${12}/>Baixar PNG</button>`:html`<button className="btn sm" onClick=${()=>baixarTodas(p.arquivos.filter(a=>a.path),toast)}><${Ic} n="dl" s=${12}/>Baixar PNGs (${p.arquivos.filter(a=>a.path).length})</button>`}</div>`}
+    ${(p.arquivos||[]).some(a=>a.path)&&html`<div className="row" style=${{gap:6,marginTop:6,flexWrap:'wrap'}}><${BaixarPngBtn} p=${p} cfg=${cfg} toast=${toast} cls="btn sm"/></div>`}
     ${pode('mover')&&html`<div className="row" style=${{gap:6,marginTop:8,flexWrap:'wrap'}}>
      ${imp?html`<button className="btn sm p" onClick=${()=>impresso(p)}>✓ Impresso</button><button className="btn sm" onClick=${()=>voltar(p)}>↩ Voltar à fila</button>`
       :m?html`<button className="btn sm p" onClick=${()=>imprimir(p,m)}>▶ Imprimir agora</button>`
@@ -5155,6 +5155,13 @@ async function baixarMontagemSolic({x,cfg,maxCm=500,prog}){const M=montagemSolic
    const blob=await pngEmFaixas({pecas:ps,y0,y1,Wpx,px,bm,dpi,prog:pc=>prog&&prog((n>1?'Parte '+(i+1)+' de '+n+': ':'Gerando PNG: ')+pc+'%')});
    baixarBlob(blob,nome+(n>1?'-parte'+(i+1)+'de'+n+'-'+num((y1-y0)/100)+'m':'')+'.png');await new Promise(r=>setTimeout(r,500))}}
  finally{for(const k in bms)try{bms[k].close()}catch(e){}}return n}
+/* baixar para imprimir: a folha já montada (não as artes separadas) */
+const temMontagem=(p,cfg)=>{try{if((p.arquivos||[]).length&&p.arquivos.every(a=>a.montado))return false;const M=montagemSolic(p,cfg);return !!(M&&M.pecas&&M.pecas.length)}catch(e){return false}};
+async function baixarPedidoPng(p,cfg,toast,prog){try{if((p.arquivos||[]).length&&p.arquivos.every(a=>a.montado))return await baixarTodas(p.arquivos,toast);
+  if(temMontagem(p,cfg)){prog&&prog('Montando…');const n=await baixarMontagemSolic({x:p,cfg,maxCm:500,prog});toast(n>1?'Folha montada baixada em '+n+' partes de até 5 m':'Folha montada baixada (PNG 300 DPI)');return}
+  await baixarTodas(p.arquivos||[],toast)}catch(e){toast(e.message||'Erro ao gerar o PNG',1)}finally{prog&&prog('')}}
+function BaixarPngBtn({p,cfg,toast,cls='btn',txt}){const [pr,setPr]=useState('');const mont=temMontagem(p,cfg)||((p.arquivos||[]).length&&p.arquivos.every(a=>a.montado));
+ return html`<button className=${cls} disabled=${!!pr} onClick=${()=>baixarPedidoPng(p,cfg,toast,setPr)}><${Ic} n="dl" s=${14}/>${pr||txt||(mont?'Baixar PNG montado':'Baixar artes ('+(p.arquivos||[]).length+')')}</button>`}
 function MontagemOnline({x,cfg,urls,toast}){const M=useMemo(()=>montagemSolic(x,cfg),[x.id,x.montagem]);const ref=useRef(null);const [prog,setProg]=useState('');const [maxCm,setMaxCm]=useState('500');
  useEffect(()=>{const cv=ref.current;if(!cv||!M)return;let vivo=true;(async()=>{const cw=cv.clientWidth||600;const k=cw/M.W;const ch=Math.min(Math.max(M.comp*k,120),520);const kk=Math.min(k,ch/M.comp);const dpr=window.devicePixelRatio||1;cv.width=cw*dpr;cv.height=ch*dpr;cv.style.height=ch+'px';
   const g=cv.getContext('2d');if(!g)return;g.scale(dpr,dpr);const ox=(cw-M.W*kk)/2;g.fillStyle='rgba(127,127,127,.12)';g.fillRect(ox,0,M.W*kk,ch);const ims={};
