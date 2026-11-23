@@ -2682,7 +2682,10 @@ function erroItem(i,prod,disp){
  if(prod&&prod.variacoes&&!i.varianteId)return'Escolha cor/tamanho';
  if(disp!=null&&i.qtd>disp)return'Estoque disponível: '+disp;return null}
 /* Recalcula tudo que deriva do pedido (o equivalente aos gatilhos do banco). */
+const ID_LOJA=['c-loja-propria','c-sc-6a5a342958e9900b29081b0e'];
+const ehLojaPropria=(id,nome)=>ID_LOJA.includes(id)||/^riber print\b/.test(norm(nome||''));
 function normalizar(p,quem){
+ if(!p.cancelado&&p.origem!=='scalle'&&ehLojaPropria(p.clienteId,p.clienteNome)&&!(p.interno&&p.cortesia))p={...p,interno:true,cortesia:true,autorizado:true,historico:[...(p.historico||[]),{em:new Date().toISOString(),por:quem,tipo:'financeiro',obs:'Pedido da loja própria RIBER PRINT: não fatura, só baixa matéria-prima'}]};
  const t=totais(p.itens||[],p.frete,p.desconto,{cortesia:p.cortesia,custoExtra:p.custoExtra});
  const pago=r2(sum((p.pagamentos||[]).filter(x=>!x.estornado),x=>x.valor));
  const fin=p.cancelado?'cancelado':(t.total>0&&pago>=t.total)||(p.cortesia&&t.total===0)?'pago':pago>0?'parcial':p.autorizado?'faturado':'pendente';
@@ -3030,7 +3033,9 @@ function Dashboard({db,pedidos,clientes,cfg,pode,abrir,ir,impressoes=[],insumos=
   </div></div>`}
 
 /* ---------------- pedidos ---------------- */
-const ORD_KB=p=>Number.isFinite(Number(p.ordemKb))&&p.ordemKb!==null&&p.ordemKb!==''?Number(p.ordemKb):1e15;
+/* ordem da fila: pela hora em que o pedido foi feito; arrastar grava uma posição entre os vizinhos, e pedidos novos entram no fim */
+const ORD_KB=p=>{const o=Number(p.ordemKb);return Number.isFinite(o)&&o>1e12?o:(Date.parse(p.criadoEm||'')||0)};
+const chaveEntre=(lista,i)=>{const a=lista[i-1],b=lista[i];const ka=a?ORD_KB(a.p||a):null,kb=b?ORD_KB(b.p||b):null;return ka!=null&&kb!=null?(ka+kb)/2:ka!=null?ka+60000:kb!=null?kb-60000:Date.now()};
 const naFila=p=>!p.cancelado&&p.origem!=='scalle'&&['aguardando','em_producao'].includes(p.statusProd||'aguardando')&&((p.totais?.mt||0)+(p.totais?.mu||0)>0)&&(p.statusFin==='pago'||!!p.autorizado||p.interno)&&!impressoP(p);
 const PRI_ORD={urgente:0,alta:1,normal:2,baixa:3};
 const esperaTxt=iso=>{const h=(Date.now()-new Date(iso).getTime())/36e5;return h<1?'há menos de 1 h':h<24?'há '+Math.floor(h)+' h':'há '+Math.floor(h/24)+' dia(s)'};
@@ -3044,7 +3049,7 @@ function Pedidos({pedidos,clientes=[],cfg,abrir,pode,setForm,toast}){
   if(cliF==='__loja'&&!p.interno)return false;if(cliF==='__vendas'&&p.interno)return false;if(cliF&&cliF[0]!=='_'&&p.clienteId!==cliF)return false;
   if(fin&&p.statusFin!==fin)return false;if(pr&&p.statusProd!==pr)return false;if(!fila&&ini&&p.dia<ini)return false;if(!fila&&fim&&p.dia>fim)return false;
   if(atr&&!(p.previsao&&new Date(p.previsao)<new Date()&&['aguardando','em_producao'].includes(p.statusProd)))return false;return true});
- const lista=fila?[...lista0].sort((a,b)=>ORD_KB(a)-ORD_KB(b)||(PRI_ORD[a.prioridade]??2)-(PRI_ORD[b.prioridade]??2)||String(a.criadoEm||'').localeCompare(String(b.criadoEm||''))||a.numero-b.numero):lista0;
+ const lista=fila?[...lista0].sort((a,b)=>ORD_KB(a)-ORD_KB(b)||a.numero-b.numero):lista0;
  const exportar=async()=>{const dl=await claude.use('downloads');if(!dl)return toast('Download indisponível nesta visualização',1);
   const L=[['Pedido','Data','Cliente','Metros Têxtil','Metros UV','Peças','Total','Pago','Saldo','Financeiro','Produção']].concat(lista.map(p=>[p.numero,dBR(p.criadoEm),p.clienteNome,num(p.totais?.mt),num(p.totais?.mu),p.totais?.pecas,num(p.total),num(p.pago),num(p.saldo),FIN[p.statusFin][0],PROD[p.statusProd][0]]));
   const csv='﻿'+L.map(r=>r.map(c=>{const s=String(c??'');return/[;"\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}).join(';')).join('\r\n');
@@ -3058,7 +3063,7 @@ function Pedidos({pedidos,clientes=[],cfg,abrir,pode,setForm,toast}){
   <div className="row between" style=${{marginBottom:14}}><div><h1>Pedidos</h1><div className="sub">${lista.length} de ${pedidos.length} pedidos</div></div>
    <div className="row">${pode('exportar')&&html`<button className="btn" onClick=${exportar}><${Ic} n="dl"/>Exportar CSV</button>`}${pode('criar')&&html`<a className="btn" style=${{textDecoration:'none'}} href="#pedidoartes"><${Ic} n="up"/>Pedido com artes (PNG)</a>`}${pode('criar')&&html`<button className="btn p" onClick=${()=>setForm({t:'pedido'})}><${Ic} n="plus"/>Novo pedido</button>`}</div></div>
   <div className="row" style=${{marginBottom:10,flexWrap:'wrap',gap:8,alignItems:'center'}}><div className="tabs" style=${{flexWrap:'wrap'}}><button className=${atalhoAtivo==='fila'?'on':''} style=${{fontWeight:700}} onClick=${()=>setFila(true)} title="Pedidos liberados (pagos ou autorizados) que ainda não foram impressos, do mais antigo para o mais recente">🖨️ Fila de impressão${nFila?' ('+nFila+')':''}</button><button className=${atalhoAtivo==='todos'?'on':''} onClick=${()=>{setFila(false);setIni('');setFim('')}}>Todos</button>${atalhos.map(([k,l,a,b])=>html`<button key=${k} className=${atalhoAtivo===k?'on':''} onClick=${()=>{setFila(false);setIni(a);setFim(b)}}>${l}</button>`)}<button className=${atalhoAtivo==='custom'?'on':''} onClick=${()=>{setFila(false);if(atalhoAtivo!=='custom'){setIni(addD(hj,-6));setFim(hj)}}}>Personalizado</button></div>
-   ${fila&&html`<span className="sm mut">Pedidos pagos ou autorizados que ainda não foram impressos · na ordem de prioridade</span><a className="btn sm" style=${{textDecoration:'none'}} href="#filamaq">🖨️ Ver fila por máquina</a>`}${!fila&&(ini||fim)&&html`<span className="sm mut">${ini&&fim?(ini===fim?dBR(ini):dBR(ini)+' a '+dBR(fim)):ini?'desde '+dBR(ini):'até '+dBR(fim)}</span>`}</div>
+   ${fila&&html`<span className="sm mut">Pedidos pagos ou autorizados que ainda não foram impressos · na ordem em que foram feitos (arraste no Kanban para mudar)</span><a className="btn sm" style=${{textDecoration:'none'}} href="#filamaq">🖨️ Ver fila por máquina</a>`}${!fila&&(ini||fim)&&html`<span className="sm mut">${ini&&fim?(ini===fim?dBR(ini):dBR(ini)+' a '+dBR(fim)):ini?'desde '+dBR(ini):'até '+dBR(fim)}</span>`}</div>
   <div className="grid g4" style=${{marginBottom:12}}>
    <div className="card kpi hero"><div className="t">${fila?'Pedidos na fila':'Pedidos'}</div><div className="v tab">${num(fila?lista.length:R.n,0)}</div>${fila?html`<div className="sm mut">${lista.length?'o mais antigo espera '+esperaTxt(lista.slice().sort((a,b)=>String(a.criadoEm).localeCompare(String(b.criadoEm)))[0].criadoEm).replace('há ',''):'fila vazia'}${R.nl?' · '+R.nl+' da loja própria':''}</div>`:''}<div className="sm mut" style=${{display:fila?'none':''}}>${R.nl?'+ '+R.nl+' da loja própria · ':''}${R.prontos} pronto(s)/entregue(s)${R.canc?' · '+R.canc+' cancelado(s)':''}</div></div>
    <div className="card kpi"><div className="t">${fila?'Metros para imprimir':'Metros impressos'}</div><div className="v tab">${num(metrosTot)} m</div><div className="sm mut">Têxtil ${num(R.mt)} · UV ${num(R.mu)}${R.ml?' · loja própria '+num(R.ml):''}${R.pecas?' · '+num(R.pecas,0)+' peça(s)':''}</div></div>
@@ -3425,7 +3430,7 @@ function FilaMaquinas(ctx){
  const idsMaq=new Set(maqs.map(m=>m.id));
  const naMaq=p=>!p.cancelado&&p.origem!=='scalle'&&!impressoP(p)&&metrosP(p)>0&&(p.etapaId==='imprimindo'||naFila(p));
  const todos=pedidos.filter(naMaq).filter(p=>!q||String(p.numero).includes(dig(q)||'~')||norm(p.clienteNome).includes(norm(q)));
- const ordem=(a,b)=>(a.etapaId==='imprimindo'?0:1)-(b.etapaId==='imprimindo'?0:1)||ORD_KB(a)-ORD_KB(b)||(PRI_ORD[a.prioridade]??2)-(PRI_ORD[b.prioridade]??2)||String(a.criadoEm||'').localeCompare(String(b.criadoEm||''))||a.numero-b.numero;
+ const ordem=(a,b)=>(a.etapaId==='imprimindo'?0:1)-(b.etapaId==='imprimindo'?0:1)||ORD_KB(a)-ORD_KB(b)||a.numero-b.numero;
  const colunas=[{id:'',nome:'Fila consolidada',sub:'Pedidos ainda sem máquina',cor:'#71717a'},...maqs.map(m=>({id:m.id,nome:m.nome,sub:[m.fabricante,m.modelo].filter(Boolean).join(' · '),cor:m.status==='operando'?'#16a34a':'#f59e0b',m}))];
  const daCol=id=>todos.filter(p=>(idsMaq.has(p.maquinaId)?p.maquinaId:'')===id).sort(ordem);
  const etapa=id=>cfg.etapas.find(e=>e.id===id);
@@ -3436,7 +3441,7 @@ function FilaMaquinas(ctx){
   try{const atualCol=idsMaq.has(p.maquinaId)?p.maquinaId:'';
    if(atualCol!==colId){const m=maqs.find(x=>x.id===colId);if(p.etapaId==='imprimindo'&&!colId)return toast('#'+p.numero+' está imprimindo. Marque como impresso ou volte para a fila antes.',1);
     await db.doc('pedidos/'+p.id).update({maquinaId:colId||null,maquinaNome:m?m.nome:null,historico:[...(p.historico||[]),{em:new Date().toISOString(),por:me,tipo:'producao',obs:colId?'Fila da '+m.nome:'Voltou para a fila consolidada'}]})}
-   for(let j=0;j<lista.length;j++){const x=lista[j];const o=(j+1)*10;if(Number(x.ordemKb)!==o)await db.doc('pedidos/'+x.id).update({ordemKb:o})}
+   {const k=lista.indexOf(p);const sem=lista.filter(x=>x.id!==p.id);await db.doc('pedidos/'+p.id).update({ordemKb:chaveEntre(sem,k)})}
    toast('#'+p.numero+' → '+(colunas.find(c=>c.id===colId)?.nome||'')+' ('+(lista.indexOf(p)+1)+'º)')}catch(e){toast('Erro: '+(e.message||e.code),1)}};
  const imprimir=async(p,m)=>{if(!pode('mover'))return toast('Sem permissão.',1);const e=etapa('imprimindo');if(!e)return toast('Crie a etapa "Imprimindo" nas configurações.',1);
   const setor=m&&m.tipo==='uv'?'dtf_uv':'dtf_textil';const ag=new Date().toISOString();
@@ -3464,7 +3469,7 @@ function FilaMaquinas(ctx){
     <div className="sm" style=${{marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${p.clienteNome}</div>
     <div className="row sm mut" style=${{gap:6,marginTop:4,flexWrap:'wrap'}}>${p.prioridade==='urgente'&&html`<span className="badge" style=${{background:'#fee2e2',color:'#b91c1c'}}>Urgente</span>`}${p.prioridade==='alta'&&html`<span className="badge" style=${{background:'#fef3c7',color:'#92400e'}}>Alta</span>`}${at&&html`<span className="badge" style=${{background:'#fee2e2',color:'#b91c1c'}}>Atrasado</span>`}
      ${imp?html`<span style=${{color:'#c026d3',fontWeight:700}}>Imprimindo há ${durTxt(agora-Date.parse(p.imprimindoEm||p.etapaDesde||agora))}</span>`:html`<span>espera ${esperaTxt(p.criadoEm).replace('há ','')}</span>`}</div>
-    ${p.loteSku&&!(p.arquivos||[]).some(a=>a.montado)&&html`<div style=${{marginTop:6}}><button className="btn sm" disabled=${!!gerando} onClick=${async()=>{const l=(ctx.lotesSku||[]).find(x=>x.pedidoId===p.id);if(!l||!l.layout)return toast('Lote sem montagem salva. Gere de novo em Estampas por SKU.',1);setGerando(p.id);try{const n=await anexarPngLote({db,me,lote:l,prog:m=>toast(m)});toast(n+' PNG anexado(s) ao #'+p.numero)}catch(e){toast(e.message||String(e),1)}finally{setGerando('')}}}>📎 ${gerando===p.id?'Gerando PNG…':'Gerar PNG do lote'}</button></div>`}
+    ${p.loteSku&&!(p.arquivos||[]).some(a=>a.montado)&&html`<div style=${{marginTop:6}}><button className="btn sm" disabled=${!!gerando} onClick=${async()=>{const l=(ctx.lotesSku||[]).find(x=>x.pedidoId===p.id);if(!l||!l.layout)return toast('Lote sem montagem salva. Gere de novo em Estampas por SKU.',1);setGerando(p.id);try{const n=await anexarPngLote({db,me,lote:l,prog:m=>/^Enviando/.test(m)&&!/bloco/.test(m)&&toast(m)});toast(n+' PNG anexado(s) ao #'+p.numero)}catch(e){toast(e.message||String(e),1)}finally{setGerando('')}}}>📎 ${gerando===p.id?'Gerando PNG…':'Gerar PNG do lote'}</button></div>`}
     ${(p.arquivos||[]).some(a=>a.path)&&html`<div className="row" style=${{gap:6,marginTop:6,flexWrap:'wrap'}}>${p.arquivos.filter(a=>a.path).length===1?html`<button className="btn sm" onClick=${()=>baixarArte(p.arquivos.find(a=>a.path),toast)}><${Ic} n="dl" s=${12}/>Baixar PNG</button>`:html`<button className="btn sm" onClick=${()=>baixarTodas(p.arquivos.filter(a=>a.path),toast)}><${Ic} n="dl" s=${12}/>Baixar PNGs (${p.arquivos.filter(a=>a.path).length})</button>`}</div>`}
     ${pode('mover')&&html`<div className="row" style=${{gap:6,marginTop:8,flexWrap:'wrap'}}>
      ${imp?html`<button className="btn sm p" onClick=${()=>impresso(p)}>✓ Impresso</button><button className="btn sm" onClick=${()=>voltar(p)}>↩ Voltar à fila</button>`
@@ -3497,7 +3502,7 @@ function Kanban(ctx){
  const ps0=pedidos.filter(p=>(fila?naFila(p):faixa?(p.dia>=faixa[0]&&p.dia<=faixa[1]):(!(p.cancelado||p.statusProd==='entregue')||new Date(p.etapaDesde)>limite))&&(!q||String(p.numero).includes(q)||norm(p.clienteNome).includes(norm(q)))
   &&!(cliF==='__loja'&&!p.interno)&&!(cliF==='__vendas'&&p.interno)&&!(cliF&&cliF[0]!=='_'&&p.clienteId!==cliF)&&!(fin&&p.statusFin!==fin)&&!(pr&&p.statusProd!==pr)
   &&!(atr&&!(p.previsao&&new Date(p.previsao)<new Date()&&['aguardando','em_producao'].includes(p.statusProd))));
- const ps=fila?[...ps0].sort((a,b)=>(PRI_ORD[a.prioridade]??2)-(PRI_ORD[b.prioridade]??2)||String(a.criadoEm||'').localeCompare(String(b.criadoEm||''))||a.numero-b.numero):ps0;
+ const ps=[...ps0].sort((a,b)=>String(a.criadoEm||'').localeCompare(String(b.criadoEm||''))||a.numero-b.numero);
  let cols,cards;
  if(vis==='geral'){cols=cfg.etapas;cards=ps.map(p=>({k:p.id,col:p.etapaId,p}))}
  else if(vis==='financeiro'){cols=[{id:'pendente',nome:'Pendente',cor:'#f59e0b'},{id:'parcial',nome:'Parcial',cor:'#3b82f6'},{id:'faturado',nome:'Faturado (a cobrar)',cor:'#8b5cf6'},{id:'pago',nome:'Pago',cor:'#16a34a'}];cards=ps.filter(p=>!p.cancelado).map(p=>({k:p.id,col:p.statusFin,p}))}
@@ -3509,12 +3514,12 @@ function Kanban(ctx){
   if(!pode('ops'))return ctx.toast('Sem permissão para alterar ordens de produção.',1);
   const p=card.p;const {id:_x,...c}=normalizar({...p,ordens:{...p.ordens,[vis]:colId},historico:[...p.historico,{em:new Date().toISOString(),por:ctx.me,tipo:'producao',obs:SETORES[vis]+': '+OPS[colId]}]},ctx.me);
   try{await ctx.db.doc('pedidos/'+p.id).set(c);ctx.toast(SETORES[vis]+' #'+p.numero+': '+OPS[colId])}catch(e){ctx.toast('Erro: '+(e.message||e.code),1)}};
- const ordenar=cs=>cs.map((x,i)=>[x,i]).sort((a,b)=>ORD_KB(a[0].p)-ORD_KB(b[0].p)||a[1]-b[1]).map(a=>a[0]);
+ const ordenar=cs=>[...cs].sort((a,b)=>ORD_KB(a.p)-ORD_KB(b.p)||a.p.numero-b.p.numero);
  const reordenar=async(colId,card,ref,depois)=>{setAlvo(null);setOver(null);if(!card||card.k===ref.k)return;
   if(card.col!==colId)return soltar(colId,card);
   if(!pode('mover'))return ctx.toast('Você não tem permissão para mudar a ordem.',1);
   const atual=ordenar(cards.filter(x=>x.col===colId)).filter(x=>x.k!==card.k);let i=atual.findIndex(x=>x.k===ref.k);if(i<0)return;if(depois)i++;atual.splice(i,0,card);
-  const mud=atual.map((x,j)=>[x.p,(j+1)*10]).filter(([p,o])=>Number(p.ordemKb)!==o);
+  atual.splice(i,1);const mud=[[card.p,chaveEntre(atual,i)]];atual.splice(i,0,card);
   try{for(const [p,o] of mud)await ctx.db.doc('pedidos/'+p.id).update({ordemKb:o});ctx.toast('#'+card.p.numero+' agora é o '+(atual.indexOf(card)+1)+'º de "'+(cols.find(c=>c.id===colId)?.nome||'')+'"')}catch(e){ctx.toast('Erro ao reordenar: '+(e.message||e.code),1)}};
  const VIS=[['geral','Geral'],...Object.entries(SETORES),['financeiro','Financeiro']];
  return html`<div>
@@ -3523,7 +3528,7 @@ function Kanban(ctx){
   <div className="row" style=${{marginBottom:10,flexWrap:'wrap',gap:8,alignItems:'center'}}><span className="sm mut">Período:</span>
    <div className="tabs" style=${{flexWrap:'wrap'}}><button className=${fila?'on':''} style=${{fontWeight:700}} onClick=${()=>setPer('fila')} title="Pedidos liberados (pagos ou autorizados) que ainda não foram impressos">🖨️ Fila de impressão${nFila?' ('+nFila+')':''}</button>${[['ativos','Em andamento'],['hoje','Hoje'],['ontem','Ontem'],['7','7 dias'],['15','15 dias'],['30','30 dias'],['mes','Este mês'],['custom','Personalizado']].map(([k,l])=>html`<button key=${k} className=${per===k?'on':''} onClick=${()=>setPer(k)}>${l}</button>`)}</div>
    ${per==='custom'&&html`<span className="row" style=${{gap:6}}><input className="in" type="date" style=${{width:150}} value=${de} onChange=${e=>setDe(e.target.value)}/><span className="sm mut">até</span><input className="in" type="date" style=${{width:150}} value=${ate} max=${hoje} onChange=${e=>setAte(e.target.value)}/></span>`}
-   <span className="sm mut">${ps.length} pedido(s)${fila?' na fila de impressão · urgentes primeiro, depois os mais antigos':faixa?' de '+dBR(faixa[0])+(faixa[1]!==faixa[0]?' a '+dBR(faixa[1]):''):' abertos (e entregues nos últimos 7 dias)'}</span></div>
+   <span className="sm mut">${ps.length} pedido(s)${fila?' na fila de impressão · na ordem em que foram feitos (arraste para mudar)':faixa?' de '+dBR(faixa[0])+(faixa[1]!==faixa[0]?' a '+dBR(faixa[1]):''):' abertos (e entregues nos últimos 7 dias)'}</span></div>
   <div className="row" style=${{marginBottom:10,flexWrap:'wrap',gap:8,alignItems:'center'}}>
    <select className="in" style=${{width:210}} value=${cliF} onChange=${e=>setCliF(e.target.value)}><option value="">Todos os clientes</option><option value="__vendas">Só vendas (sem loja própria)</option><option value="__loja">Só loja própria (RIBER PRINT)</option>${[...new Set(pedidos.map(p=>p.clienteId))].map(id=>clientes.find(c=>c.id===id)).filter(Boolean).sort((a,b)=>a.nome.localeCompare(b.nome)).map(c=>html`<option key=${c.id} value=${c.id}>${c.nome}</option>`)}</select>
    <select className="in" style=${{width:150}} value=${fin} onChange=${e=>setFin(e.target.value)}><option value="">Financeiro</option>${Object.entries(FIN).map(([k,v])=>html`<option key=${k} value=${k}>${v[0]}</option>`)}</select>
