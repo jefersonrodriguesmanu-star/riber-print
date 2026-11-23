@@ -3436,7 +3436,8 @@ const durTxt=ms=>{const m=Math.max(0,Math.round(ms/6e4));return m<60?m+' min':Ma
 function FilaMaquinas(ctx){
  const {pedidos,maquinas=[],cfg,pode,toast,abrir,db,me}=ctx;
  const [agora,setAgora]=useState(Date.now());useEffect(()=>{const t=setInterval(()=>setAgora(Date.now()),20000);return()=>clearInterval(t)},[]);
- const [alvo,setAlvo]=useState(null);const drag=useRef(null);const [q,setQ]=useState('');const [gerando,setGerando]=useState('');
+ const [alvo,setAlvo]=useState(null);const drag=useRef(null);const [q,setQ]=useState('');const [gerando,setGerando]=useState('');const [rel,setRel]=useState(null);
+ const hojeSP=diaSP();const impDia=(m,d0,d1)=>pedidos.filter(p=>p.impressoEm&&!p.cancelado&&(m===undefined||(p.maquinaId||'')===m)&&diaSP(p.impressoEm)>=d0&&diaSP(p.impressoEm)<=d1);
  const maqs=maquinas.filter(m=>m.ativo!==false&&m.status!=='inativa').sort((a,b)=>String(a.nome).localeCompare(String(b.nome),'pt-BR',{numeric:true}));
  const idsMaq=new Set(maqs.map(m=>m.id));
  const naMaq=p=>!p.cancelado&&p.origem!=='scalle'&&!impressoP(p)&&metrosP(p)>0&&(p.etapaId==='imprimindo'||naFila(p));
@@ -3467,7 +3468,8 @@ function FilaMaquinas(ctx){
  const voltar=async p=>{const e=etapa('fila');if(!e)return;await moverPedido({...ctx,p:{...p,imprimindoEm:null},etapa:e})};
  const res=colunas.map(c=>{const ps=daCol(c.id);const imp=ps.filter(p=>p.etapaId==='imprimindo');const fila=ps.filter(p=>p.etapaId!=='imprimindo');
   const vel=c.m?pn(String(c.m.velocidade||'').replace(',','.')):0;const mt=sum(fila,metrosP);const mi=sum(imp,metrosP);
-  return {...c,ps,imp,fila,mt,mi,vel,horas:vel>0?(mt+mi)/vel:0}});
+  const feitos=c.id?impDia(c.id,hojeSP,hojeSP):[];const andamento=sum(imp,p=>vel>0&&p.imprimindoEm?Math.min(metrosP(p),(agora-Date.parse(p.imprimindoEm))/36e5*vel):0);
+  return {...c,ps,imp,fila,mt,mi,vel,horas:vel>0?(mt+mi)/vel:0,feitos,mHoje:sum(feitos,metrosP),andamento}});
  const tot={ped:todos.length,mt:sum(todos,metrosP)};
  const telaCheia=()=>{const el=document.getElementById('rp-filamaq');try{document.fullscreenElement?document.exitFullscreen():el&&el.requestFullscreen&&el.requestFullscreen()}catch(e){}};
  const Card=({p,c,i})=>{const m=c.m;const imp=p.etapaId==='imprimindo';const at=p.previsao&&new Date(p.previsao)<new Date();
@@ -3489,18 +3491,33 @@ function FilaMaquinas(ctx){
    </div></div>`};
  return html`<div id="rp-filamaq" style=${{background:'var(--bg)',padding:document.fullscreenElement?16:0,minHeight:document.fullscreenElement?'100vh':null,overflow:'auto'}}>
   <div className="row between" style=${{marginBottom:12,flexWrap:'wrap',gap:8}}><div><h1>Fila por máquina</h1><div className="sub">Arraste os pedidos da fila consolidada para a máquina, e para cima ou para baixo para mudar a ordem. Atualiza sozinho, ao vivo.</div></div>
-   <div className="row" style=${{gap:8}}><input className="in" style=${{width:200}} placeholder="Nº ou cliente" value=${q} onChange=${e=>setQ(e.target.value)}/><button className="btn" onClick=${telaCheia}>⛶ Tela cheia</button></div></div>
+   <div className="row" style=${{gap:8}}><input className="in" style=${{width:200}} placeholder="Nº ou cliente" value=${q} onChange=${e=>setQ(e.target.value)}/><button className="btn" onClick=${()=>setRel({per:'hoje',de:hojeSP,ate:hojeSP})}>📄 Relatório</button><button className="btn" onClick=${telaCheia}>⛶ Tela cheia</button></div></div>
   <div className="grid" style=${{gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:10,marginBottom:14}}>
-   <div className="card kpi hero"><div className="t">Fila total</div><div className="v tab">${num(tot.mt)} m</div><div className="sm mut">${tot.ped} pedido(s) · ${res[0].ps.length} sem máquina (${num(res[0].mt)} m)</div></div>
+   <div className="card kpi hero"><div className="t">Fila total</div><div className="v tab">${num(tot.mt)} m</div><div className="sm mut">${tot.ped} pedido(s) · ${res[0].ps.length} sem máquina (${num(res[0].mt)} m)</div><div className="sm" style=${{marginTop:4,fontWeight:700,color:'var(--ok)'}}>✅ Impresso hoje: ${num(sum(impDia(undefined,hojeSP,hojeSP),metrosP)+sum(res,c=>c.andamento||0))} m</div></div>
    ${res.slice(1).map(c=>{const st=c.m.status!=='operando'?['Em manutenção','#f59e0b']:c.imp.length?['Imprimindo','#c026d3']:c.fila.length?['Parada — tem fila','#dc2626']:['Livre','#16a34a'];
     return html`<div key=${c.id} className="card kpi" style=${{borderTop:'4px solid '+st[1]}}><div className="row between"><div className="t">${c.nome}</div><span className="badge" style=${{background:st[1]+'22',color:st[1],fontWeight:700}}>${c.imp.length?'● ':''}${st[0]}</span></div>
      <div className="v tab">${num(c.mt+c.mi)} m</div>
-     <div className="sm mut">${c.imp.length?'Agora: #'+c.imp.map(p=>p.numero).join(', #')+' ('+num(c.mi)+' m) · ':''}${c.fila.length} na fila (${num(c.mt)} m)${c.horas>0?' · ~'+durTxt(c.horas*36e5)+' de trabalho':''}</div></div>`})}</div>
+     <div className="sm mut">${c.imp.length?'Agora: #'+c.imp.map(p=>p.numero).join(', #')+' ('+num(c.mi)+' m) · ':''}${c.fila.length} na fila (${num(c.mt)} m)${c.horas>0?' · ~'+durTxt(c.horas*36e5)+' de trabalho':''}</div>
+     <div className="row between" style=${{marginTop:6,paddingTop:6,borderTop:'1px solid var(--line)'}}><span className="sm" style=${{fontWeight:700,color:'var(--ok)'}}>✅ Hoje: ${num(c.mHoje+c.andamento)} m</span><span className="sm mut">${c.feitos.length} pedido(s)${c.andamento>0?' · ~'+num(c.andamento)+' m em andamento':''}</span></div></div>`})}</div>
   <div className="kb">${res.map(c=>html`<div key=${c.id||'cons'} className="col" style=${{minWidth:280}} onDragOver=${e=>e.preventDefault()} onDrop=${e=>{e.preventDefault();drag.current&&mover(drag.current,c.id,null,false)}}>
    <div className="h"><span className="dot" style=${{background:c.cor}}></span><span style=${{flex:1}}>${c.nome}</span><span className="badge">${c.ps.length}</span></div>
    <div className="sm mut tab" style=${{padding:'0 12px 8px',marginTop:-6}}>${num(c.mt+c.mi)} m${c.sub?' · '+c.sub:''}</div>
    <div className="bd">${c.ps.length?(()=>{let n=0;return c.ps.map(p=>Card({p,c,i:p.etapaId==='imprimindo'?0:++n}))})():html`<div className="sm mut" style=${{padding:12,textAlign:'center'}}>${c.id?'Arraste pedidos para cá':'Nenhum pedido sem máquina'}</div>`}</div></div>`)}</div>
   ${!maqs.length&&html`<div className="card pad sm mut" style=${{marginTop:12}}>Nenhuma máquina cadastrada. Cadastre em Produção → Máquinas.</div>`}
+  ${rel&&(()=>{const L=impDia(undefined,rel.de,rel.ate).sort((a,b)=>String(a.impressoEm).localeCompare(String(b.impressoEm)));const grupos=[...maqs.map(m=>({id:m.id,nome:m.nome})),{id:'',nome:'Sem máquina informada'}].map(g=>{const ps=L.filter(p=>(idsMaq.has(p.maquinaId)?p.maquinaId:'')===g.id);const t=ps.filter(p=>p.imprimindoEm).map(p=>Date.parse(p.impressoEm)-Date.parse(p.imprimindoEm)).filter(x=>x>0);return{...g,ps,m:sum(ps,metrosP),tempo:t.length?sum(t,x=>x):0}}).filter(g=>g.ps.length||g.id);
+   const tit='Relatório de impressão por máquina · '+(rel.de===rel.ate?dBR(rel.de):dBR(rel.de)+' a '+dBR(rel.ate));
+   const imprimir=()=>{const esc=x=>String(x??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));const w=window.open('','_blank');if(!w)return toast('Permita pop-ups para imprimir',1);
+    w.document.write('<html><head><meta charset="utf-8"><title>'+esc(tit)+'</title><style>body{font:12px system-ui;margin:22px;color:#111}h1{font-size:18px;margin:0 0 4px}h2{font-size:14px;margin:18px 0 6px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #bbb;padding:5px;text-align:left}td.r,th.r{text-align:right}.res td{font-weight:700}</style></head><body><h1>'+esc((cfg.empresa?.nome||'RIBER PRINT')+' · '+tit)+'</h1><div>Emitido em '+new Date().toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})+'</div>'
+     +'<h2>Resumo</h2><table><tr><th>Máquina</th><th class="r">Pedidos</th><th class="r">Metros</th><th class="r">Tempo de impressão</th></tr>'+grupos.map(g=>'<tr><td>'+esc(g.nome)+'</td><td class="r">'+g.ps.length+'</td><td class="r">'+num(g.m)+' m</td><td class="r">'+(g.tempo?durTxt(g.tempo):'—')+'</td></tr>').join('')+'<tr class="res"><td>Total</td><td class="r">'+L.length+'</td><td class="r">'+num(sum(L,metrosP))+' m</td><td></td></tr></table>'
+     +grupos.filter(g=>g.ps.length).map(g=>'<h2>'+esc(g.nome)+' — '+num(g.m)+' m</h2><table><tr><th>Impresso em</th><th>Pedido</th><th>Cliente</th><th>Obs. para o cliente</th><th class="r">Metros</th><th class="r">Tempo</th></tr>'+g.ps.map(p=>'<tr><td>'+new Date(p.impressoEm).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})+'</td><td>#'+p.numero+'</td><td>'+esc(p.clienteNome)+'</td><td>'+esc(p.obsCliente||'')+'</td><td class="r">'+num(metrosP(p))+'</td><td class="r">'+(p.imprimindoEm?durTxt(Date.parse(p.impressoEm)-Date.parse(p.imprimindoEm)):'—')+'</td></tr>').join('')+'</table>').join('')
+     +'<script>print()<\/script></body></html>');w.document.close()};
+   return html`<${Modal} title="Relatório de impressão por máquina" sub=${rel.de===rel.ate?dBR(rel.de):dBR(rel.de)+' a '+dBR(rel.ate)} onClose=${()=>setRel(null)} lg=${true}><div style=${{display:'grid',gap:10}}>
+    <div className="tabs" style=${{flexWrap:'wrap'}}>${[['hoje','Hoje'],['ontem','Ontem'],['d7','7 dias'],['d30','30 dias'],['mes','Este mês'],['mes_ant','Mês passado']].map(([k,l])=>html`<button key=${k} className=${rel.per===k?'on':''} onClick=${()=>{const [de,ate]=periodoConsumo(k);setRel({per:k,de,ate})}}>${l}</button>`)}
+     <button className=${rel.per==='custom'?'on':''} onClick=${()=>setRel({...rel,per:'custom'})}>Personalizado</button></div>
+    ${rel.per==='custom'&&html`<div className="row" style=${{gap:8}}><input type="date" className="in" value=${rel.de} onChange=${e=>setRel({...rel,de:e.target.value})}/><input type="date" className="in" value=${rel.ate} onChange=${e=>setRel({...rel,ate:e.target.value})}/></div>`}
+    <table><thead><tr><th>Máquina</th><th className="r">Pedidos</th><th className="r">Metros</th><th className="r">Tempo de impressão</th></tr></thead><tbody>${grupos.map(g=>html`<tr key=${g.id||'x'}><td>${g.nome}</td><td className="r tab">${g.ps.length}</td><td className="r tab"><b>${num(g.m)} m</b></td><td className="r tab">${g.tempo?durTxt(g.tempo):'—'}</td></tr>`)}<tr><td><b>Total</b></td><td className="r tab"><b>${L.length}</b></td><td className="r tab"><b>${num(sum(L,metrosP))} m</b></td><td></td></tr></tbody></table>
+    <div className="sm mut">Conta os pedidos marcados como "✓ Impresso" no período, pela máquina em que foram impressos.</div>
+    <div className="row" style=${{justifyContent:'flex-end',gap:8}}><button className="btn" onClick=${()=>setRel(null)}>Fechar</button><button className="btn p" disabled=${!L.length} onClick=${imprimir}><${Ic} n="print" s=${14}/>Imprimir relatório</button></div></div><//>`})()}
  </div>`}
 
 function Kanban(ctx){
