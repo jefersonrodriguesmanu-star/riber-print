@@ -3387,13 +3387,15 @@ function PedidoDetalhe(ctxD){const {db,id,pedidos,clientes,produtos,cfg,me,pode,
  return html`<${Modal} lg title=${'Pedido #'+p.numero} sub=${p.clienteNome+' · '+dhBR(p.criadoEm)+' · '+(CANAIS[p.canal]||'')} onClose=${onClose}>
   <div className="row" style=${{marginBottom:12}}>${p.interno?html`<${Badge} c="b-info">Loja própria<//>`:html`<${FinB} s=${p.statusFin}/>`}<${ProdB} s=${p.statusProd}/>${p.prioridade!=='normal'&&html`<${Badge} c=${PRIOR[p.prioridade][1]}>${PRIOR[p.prioridade][0]}<//>`}
    ${et&&html`<span className="badge"><span className="dot" style=${{background:et.cor}}></span>${et.nome} · ${decorrido(p.etapaDesde)}</span>`}${p.autorizado&&p.statusFin!=='pago'&&html`<${Badge} c="b-vio">Produção faturada autorizada<//>`}</div>
-  ${p.cancelado&&html`<div className="card pad sm" style=${{borderColor:'var(--red2)',marginBottom:12,color:'var(--red2)'}}>Cancelado em ${dhBR(p.cancelado.em)} — ${p.cancelado.motivo}</div>`}
+  ${p.cancelado&&html`<div className="card pad sm" style=${{borderColor:'var(--red2)',marginBottom:12,color:'var(--red2)'}}>Cancelado em ${dhBR(p.cancelado.em)} — ${p.cancelado.motivo}${p.unificadoEm&&html` <button className="btn sm" style=${{marginLeft:8}} onClick=${()=>abrir('pedido',p.unificadoEm.id)}>Abrir pedido #${p.unificadoEm.numero}</button>`}</div>`}
+  ${(p.unificados||[]).length>0&&html`<div className="card pad sm" style=${{marginBottom:12,background:'var(--soft)'}}>🔗 Pedido unificado: recebeu os itens de ${p.unificados.map(u=>html`<a key=${u.id} href="#" onClick=${e=>{e.preventDefault();abrir('pedido',u.id)}} style=${{marginRight:6}}>#${u.numero}</a>`)}— um frete e uma etiqueta para tudo.</div>`}
   <div className="row noprint" style=${{marginBottom:14}}>
    ${!p.cancelado&&pode('pagar')&&p.saldo>0&&html`<button className="btn p" onClick=${()=>setDlg('pag')}>Registrar pagamento</button>`}
    ${!p.cancelado&&p.saldo>0&&cfg.empresa.pix&&!fechC&&html`<button className="btn" onClick=${()=>setDlg('pix')}>PIX (QR Code)</button>`}
    ${!p.cancelado&&pode('autorizar')&&!p.autorizado&&p.statusFin!=='pago'&&html`<button className="btn" onClick=${()=>salvar({...p,autorizado:true,historico:[...p.historico,{em:new Date().toISOString(),por:me,tipo:'autorizacao',obs:'Produção faturada autorizada'}]},'Produção autorizada')}>Autorizar produção</button>`}
    ${!p.cancelado&&pode('editar')&&html`<button className="btn" onClick=${()=>{onClose();setForm({t:'pedido',pedido:p})}}>Editar</button>`}
    ${pode('criar')&&html`<button className="btn" onClick=${duplicar}>Duplicar</button>`}
+   ${pode('editar')&&!p.cancelado&&html`<button className="btn" title="Juntar com outro pedido do mesmo cliente: soma metros e peças, recalcula o frete e gera uma etiqueta só" onClick=${()=>setDlg('unificar')}>Unificar pedidos</button>`}
    <button className="btn" onClick=${comprovante}><${Ic} n="dl" s=${15}/>Comprovante</button>${ONLINE()&&!p.cancelado&&html` <button className="btn" onClick=${()=>enviarAcomp({db,p,cfg,toast,whats})}>📍 Acompanhamento</button>`}
    ${ONLINE()&&(p.arquivos||[]).length>0&&html`<${BaixarPngBtn} p=${p} cfg=${cfg} toast=${toast}/>`}
    ${ONLINE()&&p.entrega&&p.entrega!=='retirada'&&!p.cancelado&&html`<button className="btn" onClick=${()=>abrir('etiqueta',p.id)}>${p.etiqueta&&p.etiqueta.url?'Etiqueta de envio':'Gerar etiqueta de envio'}</button>`}
@@ -3433,6 +3435,7 @@ function PedidoDetalhe(ctxD){const {db,id,pedidos,clientes,produtos,cfg,me,pode,
    </div></div>
   ${dlg==='pix'&&html`<${PixDlg} cfg=${cfg} valor=${p.saldo} txid=${'PED'+p.numero} titulo=${'PIX do pedido #'+p.numero} onClose=${()=>setDlg(null)}/>`}
   ${dlg==='pag'&&html`<${PagamentoDlg} p=${p} onClose=${()=>setDlg(null)} onOk=${x=>{salvar({...p,pagamentos:[...(p.pagamentos||[]),{...x,id:uid(),por:me,registradoEm:new Date().toISOString()}],historico:[...p.historico,{em:new Date().toISOString(),por:me,tipo:'pagamento',obs:'Pagamento de '+moeda(x.valor)+' ('+FORMAS[x.forma]+')'}]},'Pagamento registrado');setDlg(null)}}/>`}
+  ${dlg==='unificar'&&html`<${UnificarDlg} ...${ctxD} p=${p} onClose=${()=>setDlg(null)}/>`}
   ${dlg==='cancel'&&html`<${MotivoDlg} titulo=${'Cancelar pedido #'+p.numero} aviso=${p.pago>0?'Este pedido tem '+moeda(p.pago)+' recebidos. Estorne os pagamentos antes de cancelar.':'As reservas de estoque serão liberadas.'} bloqueado=${p.pago>0} onClose=${()=>setDlg(null)} opcao=${Object.keys(p.consumoLancado||{}).length?{label:'Devolver a matéria-prima ao estoque',desc:'Marque se o pedido não chegou a ser impresso. O filme, a tinta e o pó abatidos voltam para o estoque.',padrao:true}:null}
     onOk=${(m,dev)=>{const ce=cfg.etapas.find(e=>e.cancela);salvar({...p,...(dev?{estornoConsumo:{em:new Date().toISOString(),por:me}}:{}),cancelado:{em:new Date().toISOString(),por:me,motivo:m},etapaId:ce?ce.id:p.etapaId,etapaDesde:new Date().toISOString(),historico:[...p.historico,{em:new Date().toISOString(),por:me,tipo:'cancelamento',obs:'Cancelado: '+m}]},'Pedido cancelado');setDlg(null)}}/>`}
   ${dlg&&dlg.estorno&&html`<${MotivoDlg} titulo="Estornar pagamento" aviso="O valor deixa de contar como recebido. O registro fica no histórico." onClose=${()=>setDlg(null)}
@@ -4853,7 +4856,7 @@ const endTexto=e=>[e.linha,e.bairro,e.cidade,e.cep&&'CEP '+String(e.cep).replace
 const mapaUrl=e=>'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(e.lat&&e.lng?e.lat+','+e.lng:[e.linha,e.bairro,e.cidade,'Brasil'].filter(Boolean).join(', '));
 const wazeUrl=e=>e.lat&&e.lng?'https://waze.com/ul?ll='+e.lat+','+e.lng+'&navigate=yes':'https://waze.com/ul?q='+encodeURIComponent([e.linha,e.cidade].filter(Boolean).join(', '))+'&navigate=yes';
 /* ---------------- expedição: enviar (frete), retirar (cliente busca) e entregar (nossos entregadores) ---------------- */
-function Expedicao(ctx){const {db,pedidos,clientes,cfg,me,pode,toast,abrir}=ctx;
+function Expedicao(ctx){const [unif,setUnif]=useState(null);const ativosF=fechAtivos(ctx.fechamentos||[]);const outrosUnif=p=>(ctx.pedidos||[]).filter(x=>x.id!==p.id&&x.clienteId&&x.clienteId===p.clienteId&&!podeUnificar(x,ativosF));const {db,pedidos,clientes,cfg,me,pode,toast,abrir}=ctx;
  const [aba,setAba]=useState(()=>{try{return localStorage.getItem('rp_exp_aba')||'enviar'}catch(e){return 'enviar'}});const ir=a=>{setAba(a);try{localStorage.setItem('rp_exp_aba',a)}catch(e){}};
  const [sub,setSub]=useState('prontos');const [busca,setBusca]=useState('');const [dlg,setDlg]=useState(null);const [s,setS]=useState(false);
  const podeM=pode('mover')||pode('entregas');const cliDe=p=>clientes.find(c=>c.id===p.clienteId);const hoje=diaSP();
@@ -4904,6 +4907,7 @@ function Expedicao(ctx){const {db,pedidos,clientes,cfg,me,pode,toast,abrir}=ctx;
    ${p.entregueEm&&p.statusProd==='entregue'&&html`<div className="sm" style=${{color:'var(--ok)'}}>${aba==='retirar'?'Retirado':'Entregue'} ${haQuanto(p.entregueEm)}${p.entregaInfo?.recebedor?' · '+p.entregaInfo.recebedor:''}${p.entregaInfo?.por?' · por '+(p.entregaInfo.porNome||ctx.nomeDe(p.entregaInfo.por)||p.entregaInfo.por):''}</div>`}
    ${p.postadoEm&&p.postadoPor&&html`<div className="sm mut">Postado por ${p.postadoPorNome||ctx.nomeDe(p.postadoPor)}</div>`}${p.saiuPostarEm&&!p.postadoEm&&p.saiuPostarCom&&html`<div className="sm mut">Saiu com ${p.saiuPostarCom}</div>`}
    <div className="row" style=${{gap:6,flexWrap:'wrap'}}>
+    ${(aba==='enviar'||aba==='retirar')&&!podeUnificar(p,ativosF)&&outrosUnif(p).length>0&&html`<button className="btn sm" style=${{borderColor:'var(--acc)',color:'var(--acc)'}} title=${'Este cliente tem outro(s) pedido(s) em aberto: '+outrosUnif(p).map(x=>'#'+x.numero).join(', ')} onClick=${()=>setUnif(p)}>🔗 Unificar (+${outrosUnif(p).length})</button>`}
     ${aba==='enviar'&&p.statusProd!=='entregue'&&html`<button className="btn sm" onClick=${()=>abrir('etiqueta',p.id)}>🏷️ ${p.etiqueta&&p.etiqueta.url?'Etiqueta de envio':'Emitir etiqueta'}</button>`}
     ${podeM&&subOk==='producao'&&html`<button className="btn sm" onClick=${()=>pronto(p)}>✓ Marcar como pronto</button>`}
     ${podeM&&(aba==='enviar'||aba==='ml')&&subOk==='prontos'&&html`<button className="btn sm" style=${{borderColor:'#c026d3',color:'#c026d3',fontWeight:700}} onClick=${()=>setDlg({t:'saiu',p,quem:(()=>{try{return ''}catch(e){return ''}})()})}>🛵 Saiu para postar</button>`}
@@ -4931,6 +4935,7 @@ function Expedicao(ctx){const {db,pedidos,clientes,cfg,me,pode,toast,abrir}=ctx;
    <div className="row between" style=${{marginBottom:10,flexWrap:'wrap',gap:8}}><div className="tabs" style=${{flexWrap:'wrap'}}>${SUBS[aba].map(([k,l])=>html`<button key=${k} className=${subOk===k?'on':''} onClick=${()=>setSub(k)}>${l} (${(G[aba][k]||[]).length})</button>`)}</div>
     ${(aba==='enviar'||aba==='ml')&&html`<button className="btn sm" onClick=${romaneio}><${Ic} n="print" s=${13}/>Romaneio de postagem</button>`}</div>
    ${lista.length===0?html`<div className="card"><${Empty} t="Nenhum pedido aqui" s=${subOk==='prontos'?'Quando um pedido ficar pronto ele aparece aqui.':''}/></div>`:html`<div style=${{display:'grid',gap:10,gridTemplateColumns:'repeat(auto-fill,minmax(310px,1fr))'}}>${lista.map(Card)}</div>`}`}
+  ${unif&&html`<${UnificarDlg} ...${ctx} p=${unif} onClose=${()=>setUnif(null)}/>`}
   ${dlg&&html`<${Modal} title=${(dlg.t==='saiu'?'Saiu para postar':dlg.t==='postar'?'Enviar':dlg.t==='retirado'?'Retirada':'Entrega')+' do pedido #'+dlg.p.numero} sub=${dlg.p.clienteNome} onClose=${()=>setDlg(null)}><div style=${{display:'grid',gap:10}}>
    ${dlg.t==='saiu'?html`<div className="sm mut">O pacote está indo para ${aba==='ml'?'o ponto de envio do Mercado Livre':'a agência / transportadora'}. Quando voltar, aponte como postado.</div>
      <${QuemFez} ctx=${ctx} l="Quem está levando" v=${dlg.feito} set=${x=>setDlg(d=>d&&({...d,feito:x}))}/>
@@ -5296,6 +5301,61 @@ function ReceberCompra({db,c,insumos,fornecedores=[],me,toast,onClose}){const fE
     <label className="row sm" style=${{gap:6}}><input type="checkbox" checked=${pagoJa} onChange=${e=>setPagoJa(e.target.checked)}/> Já foi pago (à vista no recebimento)</label>`}</div>
   <div className="sm mut">Ao confirmar, cada item conferido entra no estoque com o preço informado (o custo médio é recalculado) e a compra fica como “Recebido e conferido”. Item desmarcado não entra.</div>
   <div className="row" style=${{justifyContent:'flex-end'}}><button className="btn p" disabled=${s} onClick=${confirmar}>${s?'Lançando…':'Confirmar recebimento e ajustar estoque'}</button></div></div><//>`}
+
+/* ---------------- unificar pedidos do mesmo cliente (um envio, um frete, uma etiqueta) ---------------- */
+const ORD_RANK={pendente:0,em_andamento:1,concluida:2};const PROD_RANK={aguardando:0,em_producao:1,pronto:2};
+/* Pode entrar na unificação: não cancelado, não unificado, sem etiqueta comprada, não postado/entregue e fora de fechamento ativo. */
+function podeUnificar(x,ativos){if(!x||x.cancelado||x.unificadoEm)return 'cancelado ou já unificado';if(x.postadoEm||x.statusProd==='entregue')return 'já enviado/entregue';
+ if(x.etiqueta&&(x.etiqueta.id||x.etiqueta.rastreio))return 'já tem etiqueta comprada';if(ativos&&ativos.has(x.id))return 'está em um fechamento';return ''}
+function juntarPedidos(main,secs,cfg){const et=(cfg.etapas||[]).map(e=>e.id);const todos=[main,...secs];
+ const usados=new Set((main.itens||[]).map(i=>i.id));
+ const itens=[...(main.itens||[]).map(i=>i.doPedido?i:{...i,doPedido:main.numero}),...secs.flatMap(s=>(s.itens||[]).map(i=>{let id=i.id||uid();if(usados.has(id))id=id+'-'+s.numero;usados.add(id);return{...i,id,doPedido:s.numero}}))];
+ const ordens={};for(const p of todos)for(const [k,v] of Object.entries(p.ordens||{}))ordens[k]=k in ordens?(ORD_RANK[v]<ORD_RANK[ordens[k]]?v:ordens[k]):v;
+ const lanc={};for(const p of todos)for(const [k,v] of Object.entries(p.consumoLancado||{}))lanc[k]=r3((lanc[k]||0)+Number(v||0));
+ const prods=todos.map(p=>p.statusProd||'aguardando').filter(s=>s in PROD_RANK);const statusProd=prods.sort((a,b)=>PROD_RANK[a]-PROD_RANK[b])[0]||main.statusProd;
+ const etapas=todos.map(p=>p.etapaId).filter(Boolean);const etapaId=etapas.sort((a,b)=>et.indexOf(a)-et.indexOf(b))[0]||main.etapaId;
+ const txt=(k,sep)=>todos.map(p=>String(p[k]||'').trim()).filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(sep);
+ const prodEm=todos.map(p=>p.producaoEm).filter(Boolean).sort()[0];const consEm=todos.map(p=>p.consumoEm).filter(Boolean).sort()[0];
+ return{...main,itens,ordens,consumoLancado:lanc,statusProd,etapaId,...(prodEm?{producaoEm:prodEm}:{}),...(consEm?{consumoEm:consEm}:{}),
+  arquivos:todos.flatMap(p=>p.arquivos||[]),pagamentos:[...(main.pagamentos||[]),...secs.flatMap(s=>(s.pagamentos||[]).map(x=>({...x,obs:[x.obs,'veio do pedido #'+s.numero].filter(Boolean).join(' · ')})))],
+  desconto:r2(sum(todos,p=>Number(p.desconto||0))),custoExtra:r2(sum(todos,p=>Number(p.custoExtra||0))),frete:r2(sum(todos,p=>Number(p.frete||0))),
+  autorizado:todos.some(p=>p.autorizado),obsInterna:txt('obsInterna',' | '),obsCliente:txt('obsCliente',' | '),
+  unificados:[...(main.unificados||[]),...secs.map(s=>({id:s.id,numero:s.numero,em:new Date().toISOString()}))]}}
+async function unificarPedidos(db,mainId,secIds,cfg,me){const lerP=async id=>{const x=await db.doc('pedidos/'+id).get();if(!x.exists)throw new Error('Pedido não encontrado');return{id,...x.data()}};
+ const main=await lerP(mainId);const secs=[];for(const id of secIds)secs.push(await lerP(id));
+ for(const p of [main,...secs]){const m=podeUnificar(p);if(m)throw new Error('Pedido #'+p.numero+': '+m)}
+ if(secs.some(s=>s.clienteId!==main.clienteId))throw new Error('Só dá para unificar pedidos do mesmo cliente');
+ const ag=new Date().toISOString();const nums=secs.map(s=>'#'+s.numero).join(', ');
+ const j=juntarPedidos(main,secs,cfg);j.historico=[...(main.historico||[]),{em:ag,por:me,tipo:'edicao',obs:'Unificado com '+nums+': itens, artes e pagamentos somados neste pedido'}];
+ const {id:_m,...cm}=normalizar(j,me);await db.doc('pedidos/'+mainId).set(cm);
+ for(const s of secs){const {id:_s,...cs}=normalizar({...s,itens:[],arquivos:[],pagamentos:[],ordens:{},consumoLancado:{},frete:0,desconto:0,custoExtra:0,cancelado:{em:ag,por:me,motivo:'Unificado no pedido #'+main.numero},unificadoEm:{id:mainId,numero:main.numero,em:ag,por:me},
+   historico:[...(s.historico||[]),{em:ag,por:me,tipo:'cancelamento',obs:'Unificado no pedido #'+main.numero+' (itens, artes e pagamentos foram para lá)'}]},me);await db.doc('pedidos/'+s.id).set(cs)}
+ return{...cm,id:mainId}}
+function UnificarDlg({db,p,pedidos,clientes,fechamentos=[],cfg,me,toast,onClose,abrir}){const ativos=fechAtivos(fechamentos);const cli=clientes.find(c=>c.id===p.clienteId);
+ const cand=pedidos.filter(x=>x.id!==p.id&&x.clienteId===p.clienteId&&!x.cancelado&&!x.unificadoEm).sort((a,b)=>(a.criadoEm||'').localeCompare(b.criadoEm||''));
+ const [sel,setSel]=useState(()=>Object.fromEntries(cand.filter(x=>!podeUnificar(x,ativos)&&x.dia>=addD(diaSP(),-7)).slice(0,3).map(x=>[x.id,true])));
+ const escolhidos=[p,...cand.filter(x=>sel[x.id])].sort((a,b)=>(a.criadoEm||'').localeCompare(b.criadoEm||''));const [mainId,setMainId]=useState(p.id);
+ const mainP=escolhidos.find(x=>x.id===mainId)||escolhidos[0];const secs=escolhidos.filter(x=>x.id!==mainP.id);
+ const prev=secs.length?normalizar(juntarPedidos(mainP,secs,cfg),me):null;const [s,setS]=useState(false);const [cot,setCot]=useState(null);
+ const envio=['correios','envio'].includes(mainP.entrega)||escolhidos.some(x=>x.freteServicoId);const bloqP=podeUnificar(p,ativos);
+ const prodDif=new Set(escolhidos.map(x=>x.statusProd||'aguardando')).size>1;
+ const confirmar=async()=>{if(!secs.length)return toast('Marque o(s) pedido(s) para unificar',1);setS(true);
+  try{const r=await unificarPedidos(db,mainP.id,secs.map(x=>x.id),cfg,me);toast('Pedidos unificados no #'+mainP.numero+(envio?' · cote o novo frete':''));if(envio)setCot(r);else{onClose();abrir&&abrir('pedido',mainP.id)}}catch(e){toast('Erro: '+(e.message||e.code),1)}finally{setS(false)}};
+ const aplicarFrete=async o=>{try{const ref=db.doc('pedidos/'+cot.id);const cur=(await ref.get()).data();const ant=Number(cur.frete||0);
+   const {id:_x,...c}=normalizar({...cur,frete:r2(o.preco),freteServico:(o.empresa+' '+o.servico).trim(),freteServicoId:o.id,fretePrazo:o.prazo,cepEntrega:o.cep||cur.cepEntrega,entrega:cur.entrega==='retirada'?'correios':cur.entrega,
+    historico:[...(cur.historico||[]),{em:new Date().toISOString(),por:me,tipo:'edicao',obs:'Frete recalculado após unificar: '+moeda(ant)+' → '+moeda(o.preco)+' ('+(o.empresa+' '+o.servico).trim()+')'}]},me);await ref.set(c);
+   toast('Frete atualizado: '+moeda(o.preco)+' · agora é só emitir a etiqueta');setCot(null);onClose();abrir&&abrir('pedido',cot.id)}catch(e){toast('Erro: '+(e.message||e.code),1)}};
+ if(cot)return html`<${CotarFrete} cfg=${cfg} cli=${cli} t=${{...cot.totais,total:cot.total}} cep=${cot.cepEntrega||cli?.cep||''} onClose=${()=>{setCot(null);onClose();abrir&&abrir('pedido',cot.id)}} onEscolher=${aplicarFrete}/>`;
+ return html`<${Modal} lg title="Unificar pedidos" sub=${(p.clienteNome||'')+' · junta itens, artes e pagamentos num pedido só, com um frete e uma etiqueta'} onClose=${onClose}><div style=${{display:'grid',gap:12}}>
+  ${bloqP?html`<div className="card pad" style=${{borderColor:'var(--red2)'}}>Este pedido não pode ser unificado: ${bloqP}.</div>`:html`
+  ${cand.length===0?html`<${Empty} t="Nenhum outro pedido deste cliente" s="Só dá para unificar pedidos do mesmo cliente."/>`:html`
+  <div className="scroll"><table><thead><tr><th></th><th>Pedido</th><th>Data</th><th className="r">Metros</th><th className="r">Peças</th><th className="r">Frete</th><th className="r">Total</th><th>Situação</th></tr></thead><tbody>
+   <tr style=${{background:'var(--soft)'}}><td>✓</td><td><b>#${p.numero}</b> <span className="sm mut">(este)</span></td><td className="sm">${dhBR(p.criadoEm)}</td><td className="r tab">${num((p.totais?.mt||0)+(p.totais?.mu||0))}</td><td className="r tab">${p.totais?.pecas||0}</td><td className="r tab">${moeda(p.frete)}</td><td className="r tab">${moeda(p.total)}</td><td className="sm">${(PROD[p.statusProd]||[p.statusProd])[0]}</td></tr>
+   ${cand.map(x=>{const m=podeUnificar(x,ativos);return html`<tr key=${x.id} style=${{opacity:m?.5:1}}><td><input type="checkbox" disabled=${!!m} checked=${!!sel[x.id]} onChange=${e=>setSel({...sel,[x.id]:e.target.checked})}/></td><td><b>#${x.numero}</b>${m?html`<div className="sm" style=${{color:'var(--red2)'}}>${m}</div>`:''}</td><td className="sm">${dhBR(x.criadoEm)}</td><td className="r tab">${num((x.totais?.mt||0)+(x.totais?.mu||0))}</td><td className="r tab">${x.totais?.pecas||0}</td><td className="r tab">${moeda(x.frete)}</td><td className="r tab">${moeda(x.total)}</td><td className="sm">${(PROD[x.statusProd]||[x.statusProd])[0]}</td></tr>`})}</tbody></table></div>
+  ${secs.length>0&&html`<div className="grid g3"><${F} l="Fica o pedido"><select className="in" value=${mainP.id} onChange=${e=>setMainId(e.target.value)}>${escolhidos.map(x=>html`<option key=${x.id} value=${x.id}>#${x.numero}${x.id===escolhidos[0].id?' (o primeiro)':''}</option>`)}</select><//>
+   <div className="card pad sm" style=${{gridColumn:'span 2',display:'grid',gap:3}}><b>Pedido #${mainP.numero} unificado</b><span>${num((prev.totais.mt||0)+(prev.totais.mu||0))} m · ${prev.totais.pecas||0} peça(s) · ${prev.itens.length} item(ns)</span><span>Total ${moeda(prev.total)} · já pago ${moeda(prev.pago)} · saldo <b>${moeda(prev.saldo)}</b></span>${envio&&html`<span className="mut">Frete somado agora ${moeda(prev.frete)}; depois de unificar você cota o frete novo com o pacote inteiro.</span>`}</div></div>
+   <div className="sm mut">O(s) pedido(s) ${secs.map(x=>'#'+x.numero).join(', ')} fica(m) marcado(s) como <b>unificado no #${mainP.numero}</b>, sem valor. Itens, artes, pagamentos e a matéria-prima já baixada passam para o #${mainP.numero}, sem baixar estoque de novo.${prodDif?' Atenção: os pedidos estão em etapas de produção diferentes; o unificado fica na etapa do menos adiantado.':''}</div>`}
+  <div className="row" style=${{justifyContent:'flex-end'}}><button className="btn" onClick=${onClose}>Voltar</button><button className="btn p" disabled=${s||!secs.length} onClick=${confirmar}>${s?'Unificando…':envio?'Unificar e cotar frete':'Unificar pedidos'}</button></div>`}`}</div><//>`}
 
 /* ---------------- metas: geral e por vendedor, termômetro, clientes novos, designers e operadores ---------------- */
 const mesAtual=()=>diaSP().slice(0,7);
