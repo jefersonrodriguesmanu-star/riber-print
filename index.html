@@ -2582,7 +2582,8 @@ function detalhesPedido(p,cfg){const L=[];const un=i=>(UNID[i.unidade]||['',i.un
  const ent=p.entrega||'retirada';L.push((ent==='retirada'?'🏬 Retirada na loja':ent==='entrega_local'?'🛵 Entrega RIBER PRINT':ent==='mercado_livre'?'🟡 Postagem no ponto Mercado Livre':'📦 Envio: '+(p.freteServico||ENTREGA[ent]||'frete'))+(ent==='retirada'?'':': '+(Number(p.frete)>0?moeda(p.frete):'grátis')));
  if(ent!=='retirada'&&p.endereco)L.push('📍 '+p.endereco);
  L.push('*Total: '+(p.cortesia?'cortesia':moeda(p.total))+'*');
- if(Number(p.pago)>0)L.push('Já pago: '+moeda(p.pago)+' · Falta: *'+moeda(p.saldo)+'*');
+ if(Number(p.pago)>0&&!p._fech)L.push('Já pago: '+moeda(p.pago)+' · Falta: *'+moeda(p.saldo)+'*');
+ if(p._fech&&!p.cortesia&&p.statusFin!=='pago')L.push('💳 Pagamento: entra no seu fechamento '+p._fech+'.');
  if(p.previsao)L.push('🗓️ Previsão: '+dBR(String(p.previsao).slice(0,10)));
  if(p.obsCliente)L.push('📝 Observações: '+String(p.obsCliente).trim());
  return L.join('\n')}
@@ -3341,7 +3342,9 @@ function PedidoDetalhe({db,id,pedidos,clientes,produtos,cfg,me,pode,toast,onClos
  const et=cfg.etapas.find(e=>e.id===p.etapaId);const cli=clientes.find(c=>c.id===p.clienteId);
  const salvar=async(np,msg)=>{try{const {id:_x,...c}=normalizar(np,me);await db.doc('pedidos/'+p.id).set(c);msg&&toast(msg)}catch(e){toast('Erro ao salvar: '+(e.message||e.code),1)}};
  const itensTxt=(p.itens||[]).map(i=>num(i.qtd)+' '+UNID[i.unidade][1]+' '+i.descricao).join(', ');
- const vars={cliente:(p.clienteNome||'').split(' ')[0],pedido:p.numero,itens:itensTxt,detalhes:detalhesPedido(p,cfg),valor:moeda(p.total),saldo:moeda(p.saldo),status:(FIN[p.statusFin]||[p.statusFin||''])[0],pix:cfg.empresa.pix,pix_copia:pixCopiaCola(cfg.empresa,p.saldo,'PED'+p.numero),horario:cfg.empresa.horario};
+ const fechC=cli&&PERIODICOS.includes(cli.condicao)&&!p.cancelado?cli:null;const fechTxt=fechC?'no fechamento '+PER_TXT[fechC.condicao]:'';
+ const vars={cliente:(p.clienteNome||'').split(' ')[0],pedido:p.numero,itens:itensTxt,detalhes:detalhesPedido(fechC?{...p,_fech:PER_TXT[fechC.condicao]}:p,cfg),valor:moeda(p.total),saldo:moeda(p.saldo),status:fechC&&p.statusFin!=='pago'?'será cobrado '+fechTxt:(FIN[p.statusFin]||[p.statusFin||''])[0],pix:fechC?'':cfg.empresa.pix,pix_copia:fechC?'':pixCopiaCola(cfg.empresa,p.saldo,'PED'+p.numero),horario:cfg.empresa.horario};
+ const ehCobranca=m=>['pagamento','cobranca'].includes(m.id)||/\{(pix|pix_copia|saldo)\}/.test(m.texto||'');
  const whats=cli?.whatsapp||p.clienteWhats;const ops=Object.entries(p.ordens||{});const pctOp=ops.length?Math.round(ops.filter(o=>o[1]==='concluida').length/ops.length*100):0;
  const nome=k=>nomes[k]||(k===me?'Você':'Colaborador');
  const comprovante=async()=>{const dl=await claude.use('downloads');if(!dl)return toast('Download indisponível nesta visualização',1);const E=cfg.empresa;const esc=s=>String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
@@ -3350,7 +3353,7 @@ function PedidoDetalhe({db,id,pedidos,clientes,produtos,cfg,me,pode,toast,onClos
   '<p><b>Cliente:</b> '+esc(p.clienteNome)+(cli&&cli.doc?' · '+docFmt(cli.doc):'')+(whats?' · '+fone(whats):'')+'</p><table><tr><th>Item</th><th class="r">Qtd</th><th class="r">Unitário</th><th class="r">Desconto</th><th class="r">Subtotal</th></tr>'+
   p.itens.map(i=>'<tr><td>'+esc(i.descricao)+(i.obs?' — '+esc(i.obs):'')+'</td><td class="r">'+num(i.qtd,3)+' '+UNID[i.unidade][1]+'</td><td class="r">'+moeda(i.preco)+'</td><td class="r">'+(i.desconto?moeda(i.desconto):'—')+'</td><td class="r">'+moeda(r2(i.qtd*i.preco-i.desconto))+'</td></tr>').join('')+
   '</table><table style="width:300px;margin-left:auto"><tr><td>Frete</td><td class="r">'+(p.freteGratis?'Grátis':moeda(p.frete))+'</td></tr><tr><td>Desconto</td><td class="r">'+moeda(p.desconto)+'</td></tr><tr class="t"><td>Total</td><td class="r">'+moeda(p.total)+'</td></tr><tr><td>Pago</td><td class="r">'+moeda(p.pago)+'</td></tr><tr><td>Saldo</td><td class="r">'+moeda(p.saldo)+'</td></tr></table>'+
-  (p.obsCliente?'<p><b>Observações:</b> '+esc(p.obsCliente)+'</p>':'')+(E.pix&&p.saldo>0?'<p><b>Chave PIX:</b> '+esc(E.pix)+'</p>':'')+'<p style="margin-top:40px;text-align:center;color:#666">'+esc(E.nome)+' — Impressão e Personalização</p>'+(p.saldo>0&&cfg.empresa.pix?(()=>{const cc=pixCopiaCola(cfg.empresa,p.saldo,'PED'+p.numero);return '<div style="display:flex;gap:16px;align-items:center;margin-top:18px;border:1px solid #ddd;border-radius:8px;padding:12px"><img src="'+qrUri(cc,150)+'" width="150" height="150"><div><b>Pague com PIX: '+moeda(p.saldo)+'</b><div style="font-size:11px;word-break:break-all;margin-top:6px;color:#444">'+esc(cc)+'</div></div></div>'})():'')+'</html>';
+  (p.obsCliente?'<p><b>Observações:</b> '+esc(p.obsCliente)+'</p>':'')+(fechC&&p.saldo>0?'<p><b>Pagamento:</b> este pedido será cobrado '+fechTxt+'.</p>':E.pix&&p.saldo>0?'<p><b>Chave PIX:</b> '+esc(E.pix)+'</p>':'')+'<p style="margin-top:40px;text-align:center;color:#666">'+esc(E.nome)+' — Impressão e Personalização</p>'+(p.saldo>0&&cfg.empresa.pix&&!fechC?(()=>{const cc=pixCopiaCola(cfg.empresa,p.saldo,'PED'+p.numero);return '<div style="display:flex;gap:16px;align-items:center;margin-top:18px;border:1px solid #ddd;border-radius:8px;padding:12px"><img src="'+qrUri(cc,150)+'" width="150" height="150"><div><b>Pague com PIX: '+moeda(p.saldo)+'</b><div style="font-size:11px;word-break:break-all;margin-top:6px;color:#444">'+esc(cc)+'</div></div></div>'})():'')+'</html>';
   try{await dl.save({filename:'pedido-'+p.numero+'.html',data:h})}catch(e){}};
  const duplicar=async()=>{try{const agora=new Date().toISOString();const numero=await proximoNumero(db,pedidos);const nid='p'+numero+'-'+uid().slice(-4);const e0=cfg.etapas[0];
   const np={numero,criadoEm:agora,atendente:me,clienteId:p.clienteId,clienteNome:p.clienteNome,clienteWhats:p.clienteWhats,prioridade:p.prioridade,previsao:'',forma:p.forma,canal:p.canal,entrega:p.entrega,endereco:p.endereco,frete:p.frete,desconto:p.desconto,
@@ -3363,7 +3366,7 @@ function PedidoDetalhe({db,id,pedidos,clientes,produtos,cfg,me,pode,toast,onClos
   ${p.cancelado&&html`<div className="card pad sm" style=${{borderColor:'var(--red2)',marginBottom:12,color:'var(--red2)'}}>Cancelado em ${dhBR(p.cancelado.em)} — ${p.cancelado.motivo}</div>`}
   <div className="row noprint" style=${{marginBottom:14}}>
    ${!p.cancelado&&pode('pagar')&&p.saldo>0&&html`<button className="btn p" onClick=${()=>setDlg('pag')}>Registrar pagamento</button>`}
-   ${!p.cancelado&&p.saldo>0&&cfg.empresa.pix&&html`<button className="btn" onClick=${()=>setDlg('pix')}>PIX (QR Code)</button>`}
+   ${!p.cancelado&&p.saldo>0&&cfg.empresa.pix&&!fechC&&html`<button className="btn" onClick=${()=>setDlg('pix')}>PIX (QR Code)</button>`}
    ${!p.cancelado&&pode('autorizar')&&!p.autorizado&&p.statusFin!=='pago'&&html`<button className="btn" onClick=${()=>salvar({...p,autorizado:true,historico:[...p.historico,{em:new Date().toISOString(),por:me,tipo:'autorizacao',obs:'Produção faturada autorizada'}]},'Produção autorizada')}>Autorizar produção</button>`}
    ${!p.cancelado&&pode('editar')&&html`<button className="btn" onClick=${()=>{onClose();setForm({t:'pedido',pedido:p})}}>Editar</button>`}
    ${pode('criar')&&html`<button className="btn" onClick=${duplicar}>Duplicar</button>`}
@@ -3398,8 +3401,8 @@ function PedidoDetalhe({db,id,pedidos,clientes,produtos,cfg,me,pode,toast,onClos
      ${(p.pagamentos||[]).length===0&&html`<div className="sm mut">Nenhum pagamento registrado.</div>`}
      ${(p.pagamentos||[]).map(x=>html`<div key=${x.id} className="row between card" style=${{padding:'7px 10px',opacity:x.estornado?.5:1}}><div><b className="tab">${moeda(x.valor)}</b><div className="sm mut">${dBR(x.data)} · ${FORMAS[x.forma]}${x.estornado?' · estornado: '+x.motivoEstorno:''}</div></div>
       ${!x.estornado&&pode('pagar')&&html`<button className="btn sm" onClick=${()=>setDlg({estorno:x.id})}>Estornar</button>`}</div>`)}</div></div>
-    ${whats&&html`<div className="card pad"><h2>WhatsApp</h2><div className="sm mut" style=${{marginBottom:6}}>${fone(whats)} · abre a mensagem pronta</div><div style=${{display:'grid',gap:4}}>
-     ${cfg.modelos.map(m=>html`<a key=${m.id} className="btn sm" style=${{justifyContent:'flex-start',textDecoration:'none'}} href=${waLink(whats,preencher(m.id==='aprovacao'&&m.texto===MSG_APROV_ANTIGA?CONFIG_PADRAO.modelos.find(x=>x.id==='aprovacao').texto:m.texto,vars))} target="_blank" rel="noreferrer"><${Ic} n="wa" s=${14}/>${m.nome}</a>`)}</div></div>`}
+    ${whats&&html`<div className="card pad"><h2>WhatsApp</h2><div className="sm mut" style=${{marginBottom:6}}>${fone(whats)} · abre a mensagem pronta</div>${fechC&&html`<div className="sm" style=${{background:'var(--soft)',padding:8,borderRadius:8,marginBottom:6}}>Cliente com <b>fechamento ${PER_TXT[fechC.condicao]}</b>: mensagens de cobrança e PIX ficam só no fechamento.</div>`}<div style=${{display:'grid',gap:4}}>
+     ${cfg.modelos.filter(m=>!(fechC&&ehCobranca(m))).map(m=>html`<a key=${m.id} className="btn sm" style=${{justifyContent:'flex-start',textDecoration:'none'}} href=${waLink(whats,preencher(m.id==='aprovacao'&&m.texto===MSG_APROV_ANTIGA?CONFIG_PADRAO.modelos.find(x=>x.id==='aprovacao').texto:m.texto,vars))} target="_blank" rel="noreferrer"><${Ic} n="wa" s=${14}/>${m.nome}</a>`)}</div></div>`}
     <div className="card pad" style=${{display:'grid',gap:5}}><h2>Entrega</h2><${L} k="Tipo" v=${ENTREGA[p.entrega]}/><${L} k="Previsão" v=${p.previsao?dhBR(p.previsao):'—'}/><${L} k="Pagamento" v=${FORMAS[p.forma]||'A definir'}/>
      ${p.endereco&&html`<div className="sm mut">${p.endereco}</div>`}${p.obsInterna&&html`<div className="sm" style=${{background:'color-mix(in oklab,var(--warn) 14%,transparent)',padding:8,borderRadius:8}}><b>Interno:</b> ${p.obsInterna}</div>`}${p.obsCliente&&html`<div className="sm" style=${{background:'var(--soft)',padding:8,borderRadius:8}}><b>Cliente:</b> ${p.obsCliente}</div>`}</div>
    </div></div>
@@ -5279,7 +5282,7 @@ function Financeiro(ctx){const {db,cfg,pode,me,toast,lancamentos=[],compras=[],f
  const [aba,setAba]=useState('titulos');const [per,setPer]=useState('tudo');
  const [f,setF]=useState({tipo:'',sit:'abertos',campo:'venc',de:'',ate:'',q:'',cat:'',forma:'',orig:'',pessoa:''});const sf=(k,v)=>setF(x=>({...x,[k]:v}));
  const escolher=k=>{setPer(k);const r=periodoFin(k);if(r)setF(x=>({...x,de:r[0],ate:r[1]}))};
- const [ed,setEd]=useState(null);const [bx,setBx]=useState(null);const [ver,setVer]=useState(null);const [lim,setLim]=useState(100);const [sel,setSel]=useState({});const [lote,setLote]=useState(false);
+ const [ed,setEd]=useState(null);const [bx,setBx]=useState(null);const [ver,setVer]=useState(null);const [lim,setLim]=useState(100);const [sel,setSel]=useState({});const [lote,setLote]=useState(null);
  const T=useMemo(()=>titulosFin({lancamentos,compras,fornecedores,pedidos,fechamentos,clientes,cfg}),[lancamentos,compras,fornecedores,pedidos,fechamentos,clientes,cfg]);
  const R=useMemo(()=>realizadosFin(T),[T]);
  const dataDe=t=>f.campo==='pag'?t.pagoEm:f.campo==='comp'?(t.comp?t.comp+'-01':''):t.venc;
@@ -5292,7 +5295,8 @@ function Financeiro(ctx){const {db,cfg,pode,me,toast,lancamentos=[],compras=[],f
  const venc=lista.filter(t=>t.sit==='vencido');const recP=sum(lista.filter(t=>t.tipo==='receber'),t=>t.pago),pagP=sum(lista.filter(t=>t.tipo==='pagar'),t=>t.pago);
  const cats=useMemo(()=>[...new Set([...(f.tipo!=='receber'?CAT_PAGAR:[]),...(f.tipo!=='pagar'?CAT_RECEBER:[]),...T.map(t=>t.categoria).filter(Boolean)])].sort(),[T,f.tipo]);
  const pessoasL=useMemo(()=>[...new Set(T.map(t=>t.pessoa).filter(Boolean))].sort((a,b)=>a.localeCompare(b)),[T]);
- const podeB=pode('pagar');const selIds=Object.keys(sel).filter(k=>sel[k]);
+ const podeB=pode('pagar');const selec=t=>t.status==='aberto'&&!!(t.doc||t.ped||t.fech);const selL=lista.filter(t=>sel[t.key]&&selec(t));const selIds=selL.map(t=>t.key);
+ const visSel=lista.slice(0,lim).filter(selec);const todosSel=visSel.length>0&&visSel.every(t=>sel[t.key]);
  const abrirT=t=>{if(t.doc)return setVer(t.doc.id);if(t.ped)return abrir('pedido',t.ped.id);if(t.fech){location.hash='fechamentos';return}if(t.compra){location.hash='compras'}};
  const csv=()=>{const rows=[['Tipo','Situação','Vencimento','Pagamento','Competência','Descrição','Cliente/Fornecedor','Categoria','Forma','Origem','Parcela','Documento','Valor','Pago','Saldo']].concat(lista.map(t=>[t.tipo==='pagar'?'A pagar':'A receber',SIT_FIN[t.sit][0],dBR(t.venc),t.pagoEm?dBR(t.pagoEm):'',t.comp,t.descricao,t.pessoa,t.categoria,FORMAS[t.forma]||t.forma,ORIG_FIN[t.origem]||t.origem,t.parcela,t.ref,t.valor,t.pago,t.saldo]));
   const txt=rows.map(r=>r.map(c=>typeof c==='number'?String(r2(c)).replace('.',','):'"'+String(c??'').replace(/"/g,'""')+'"').join(';')).join('\n');baixarBlob(new Blob(['﻿'+txt],{type:'text/csv'}),'financeiro-'+hoje+'.csv')};
@@ -5319,10 +5323,11 @@ function Financeiro(ctx){const {db,cfg,pode,me,toast,lancamentos=[],compras=[],f
   <div className="card kpi"><div className="t">Vencidos</div><div className="v tab" style=${{color:venc.length?'var(--red2)':''}}>${moeda(sum(venc,t=>t.saldo))}</div><div className="sm mut">receber ${moeda(sum(venc.filter(t=>t.tipo==='receber'),t=>t.saldo))} · pagar ${moeda(sum(venc.filter(t=>t.tipo==='pagar'),t=>t.saldo))}</div></div>
   <div className="card kpi"><div className="t">Saldo projetado</div><div className="v tab">${moeda(abertoR-abertoP)}</div><div className="sm mut">${recP||pagP?'realizado: recebido '+moeda(recP)+' · pago '+moeda(pagP):'a receber − a pagar'}</div></div></div>`;
  const tabela=html`<div className="card">${lista.length===0?html`<${Empty} t="Nenhum título com esses filtros" s="Ajuste os filtros ou lance uma conta a pagar ou a receber."/>`:html`
-  ${podeB&&selIds.length>0&&html`<div className="row pad between" style=${{borderBottom:'1px solid var(--line)'}}><span className="sm"><b>${selIds.length}</b> selecionado(s) · ${moeda(sum(lista.filter(t=>sel[t.key]),t=>t.saldo))}</span><div className="row"><button className="btn sm" onClick=${()=>setSel({})}>Limpar</button><button className="btn sm p" onClick=${()=>setLote(true)}>Dar baixa nos selecionados</button></div></div>`}
-  <div className="scroll"><table className="stack"><thead><tr>${podeB&&html`<th></th>`}<th>Vencimento</th><th>Descrição</th><th>Cliente / fornecedor</th><th>Categoria</th><th>Situação</th><th className="r">Valor</th><th className="r">Saldo</th><th></th></tr></thead><tbody>
-  ${lista.slice(0,lim).map(t=>{const ab=t.doc&&t.status==='aberto';return html`<tr key=${t.key} className="hov" onClick=${()=>abrirT(t)}>
-   ${podeB&&html`<td onClick=${e=>e.stopPropagation()}>${ab&&html`<input type="checkbox" checked=${!!sel[t.key]} onChange=${e=>setSel({...sel,[t.key]:e.target.checked})}/>`}</td>`}
+  ${podeB&&selIds.length>0&&html`<div className="row pad between" style=${{borderBottom:'1px solid var(--line)',position:'sticky',top:0,background:'var(--card)',zIndex:2}}><span className="sm"><b>${selIds.length}</b> selecionado(s) · ${moeda(sum(selL,t=>t.saldo))}${selL.some(t=>t.tipo==='pagar')&&selL.some(t=>t.tipo==='receber')?html` <span className="mut">(pagar ${moeda(sum(selL.filter(t=>t.tipo==='pagar'),t=>t.saldo))} · receber ${moeda(sum(selL.filter(t=>t.tipo==='receber'),t=>t.saldo))})</span>`:''}</span>
+   <div className="row"><button className="btn sm" onClick=${()=>setSel({})}>Limpar seleção</button>${lista.filter(selec).length>visSel.length&&html`<button className="btn sm" onClick=${()=>setSel(Object.fromEntries(lista.filter(selec).map(t=>[t.key,true])))}>Selecionar todos os ${lista.filter(selec).length} filtrados</button>`}<button className="btn sm" onClick=${()=>setLote('alterar')}>Alterar selecionados</button><button className="btn sm p" onClick=${()=>setLote('baixa')}>Dar baixa nos selecionados</button></div></div>`}
+  <div className="scroll"><table className="stack"><thead><tr>${podeB&&html`<th><input type="checkbox" title="Selecionar todos da tela" checked=${todosSel} onChange=${e=>{const n={...sel};for(const t of visSel)n[t.key]=e.target.checked;setSel(n)}}/></th>`}<th>Vencimento</th><th>Descrição</th><th>Cliente / fornecedor</th><th>Categoria</th><th>Situação</th><th className="r">Valor</th><th className="r">Saldo</th><th></th></tr></thead><tbody>
+  ${lista.slice(0,lim).map(t=>{const ab=t.doc&&t.status==='aberto';return html`<tr key=${t.key} className="hov" onClick=${()=>abrirT(t)} style=${{background:sel[t.key]?'color-mix(in oklab,var(--acc) 8%,transparent)':''}}>
+   ${podeB&&html`<td onClick=${e=>e.stopPropagation()}>${selec(t)&&html`<input type="checkbox" checked=${!!sel[t.key]} onChange=${e=>setSel({...sel,[t.key]:e.target.checked})}/>`}</td>`}
    <td className="nw tab">${dBR(t.venc)}${t.pagoEm&&t.status==='pago'?html`<div className="sm mut">pago ${dBR(t.pagoEm)}</div>`:''}</td>
    <td><span className=${'badge '+(t.tipo==='pagar'?'b-red':'b-ok')} style=${{marginRight:6}}>${t.tipo==='pagar'?'Pagar':'Receber'}</span><b>${t.descricao}</b>${t.parcela?html` <span className="sm mut">${t.parcela}</span>`:''}<div className="sm mut">${[ORIG_FIN[t.origem],FORMAS[t.forma],t.ref,t.boleto?'boleto '+t.boleto.slice(0,14)+'…':''].filter(Boolean).join(' · ')}</div></td>
    <td className="sm">${t.pessoa||'—'}</td><td className="sm">${t.categoria||'—'}</td><td><${Badge} c=${SIT_FIN[t.sit][1]}>${SIT_FIN[t.sit][0]}<//></td>
@@ -5343,7 +5348,8 @@ function Financeiro(ctx){const {db,cfg,pode,me,toast,lancamentos=[],compras=[],f
   ${aba==='vencidos'&&html`<${FinVencidos} T=${T.filter(t=>base(t)&&t.sit==='vencido')} onVer=${p=>{setF(x=>({...x,pessoa:p,sit:'vencido'}));setAba('titulos')}}/>`}
   ${ed&&html`<${LancForm} ...${ctx} l=${ed.id?ed:null} tipo0=${ed.tipo} cats=${cats} pessoasL=${pessoasL} onClose=${()=>setEd(null)}/>`}
   ${bx&&html`<${BaixaFin} db=${db} l=${bx} me=${me} toast=${toast} onClose=${()=>setBx(null)}/>`}
-  ${lote&&html`<${BaixaLote} db=${db} docs=${lista.filter(t=>sel[t.key]&&t.doc).map(t=>t.doc)} me=${me} toast=${toast} onClose=${ok=>{setLote(false);if(ok)setSel({})}}/>`}
+  ${lote==='baixa'&&html`<${BaixaLote} db=${db} itens=${selL} me=${me} toast=${toast} onClose=${ok=>{setLote(null);if(ok)setSel({})}}/>`}
+  ${lote==='alterar'&&html`<${AlterarLote} db=${db} itens=${selL} cats=${cats} pessoasL=${pessoasL} me=${me} toast=${toast} onClose=${ok=>{setLote(null);if(ok)setSel({})}}/>`}
   ${ver&&(()=>{const l=lancamentos.find(x=>x.id===ver);if(!l)return null;return html`<${LancDetalhe} db=${db} l=${l} me=${me} toast=${toast} pode=${pode} onEditar=${()=>{setVer(null);setEd(l)}} onBaixar=${()=>{setVer(null);setBx(l)}} onClose=${()=>setVer(null)}/>`})()}
  </div>`}
 
@@ -5452,14 +5458,43 @@ function BaixaFin({db,l,me,toast,onClose}){const {saldo}=saldoLanc(l);const [d,s
   ${l.boleto&&html`<div className="card pad sm"><span className="mut">Linha digitável:</span> <b className="tab" style=${{wordBreak:'break-all'}}>${l.boleto}</b> <button className="btn sm" onClick=${()=>{try{navigator.clipboard.writeText(dig(l.boleto));toast('Código copiado')}catch(e){}}}>Copiar</button></div>`}
   <div className="row" style=${{justifyContent:'flex-end'}}><button className="btn p" disabled=${s} onClick=${salvar}>${s?'Salvando…':'Confirmar '+(l.tipo==='pagar'?'pagamento':'recebimento')}</button></div></div><//>`}
 
-function BaixaLote({db,docs,me,toast,onClose}){const [d,setD]=useState(diaSP());const [fo,setFo]=useState('pix');const [conta,setConta]=useState('');const [s,setS]=useState(false);const tot=sum(docs,l=>saldoLanc(l).saldo);
- const salvar=async()=>{setS(true);let n=0;try{for(const l of docs){const ref=db.doc('lancamentos/'+l.id);const cur=(await ref.get()).data();const sal=saldoLanc(cur).saldo;if(!(sal>0)||cur.cancelado)continue;
-   await ref.update({pagamentos:[...(cur.pagamentos||[]),{id:uid(),data:d,valor:sal,forma:fo,conta,obs:'Baixa em lote',por:me,em:new Date().toISOString()}]});n++}toast(n+' título(s) baixado(s)');onClose(true)}catch(e){toast('Erro: '+(e.message||e.code)+' · '+n+' já baixado(s)',1)}finally{setS(false)}};
- return html`<${Modal} title="Baixa em lote" sub=${docs.length+' título(s) · '+moeda(tot)+' · cada um é baixado pelo saldo total'} onClose=${()=>onClose(false)}><div style=${{display:'grid',gap:12}}>
-  <div className="grid g3"><${F} l="Data"><input type="date" className="in" value=${d} onChange=${e=>setD(e.target.value)}/><//><${F} l="Forma"><select className="in" value=${fo} onChange=${e=>setFo(e.target.value)}>${Object.entries(FORMAS).map(([k,x])=>html`<option key=${k} value=${k}>${x}</option>`)}</select><//><${F} l="Conta / banco"><input className="in" value=${conta} onChange=${e=>setConta(e.target.value)}/><//></div>
-  <div className="sm mut" style=${{maxHeight:200,overflowY:'auto'}}>${docs.map(l=>html`<div key=${l.id}>${dBR(l.vencimento)} · ${l.descricao}${l.parcela?' ('+l.parcela+')':''} · <b>${moeda(saldoLanc(l).saldo)}</b></div>`)}</div>
-  <div className="row" style=${{justifyContent:'flex-end'}}><button className="btn p" disabled=${s} onClick=${salvar}>${s?'Baixando…':'Confirmar baixa'}</button></div></div><//>`}
-
+/* Baixa um pedido de venda pelo saldo, do mesmo jeito que a tela do pedido (pagamento + histórico + recálculo). */
+async function pagarPedidoFin(db,id,{data,forma,obs,extra},me){const ref=db.doc('pedidos/'+id);const x=await ref.get();if(!x.exists)return 0;const p=x.data();const np0=normalizar(p,me);if(np0.cancelado||!(np0.saldo>0.009))return 0;const val=r2(np0.saldo);
+ const {id:_i,...c}=normalizar({...p,pagamentos:[...(p.pagamentos||[]),{id:uid(),valor:val,forma,data,obs:obs||'Baixa pelo Financeiro',...(extra||{}),por:me,registradoEm:new Date().toISOString()}],historico:[...(p.historico||[]),{em:new Date().toISOString(),por:me,tipo:'pagamento',obs:'Pagamento de '+moeda(val)+' ('+(FORMAS[forma]||forma)+') pelo Financeiro'}]},me);await ref.set(c);return val}
+function BaixaLote({db,itens,me,toast,onClose}){const [d,setD]=useState(diaSP());const [fo,setFo]=useState('pix');const [conta,setConta]=useState('');const [s,setS]=useState(false);const [prog,setProg]=useState('');const tot=sum(itens,t=>t.saldo);
+ const salvar=async()=>{setS(true);let n=0,v=0;try{for(const t of itens){setProg((n+1)+' de '+itens.length+'…');
+    if(t.doc){const ref=db.doc('lancamentos/'+t.doc.id);const cur=(await ref.get()).data();const sal=saldoLanc(cur).saldo;if(!(sal>0)||cur.cancelado)continue;
+     await ref.update({pagamentos:[...(cur.pagamentos||[]),{id:uid(),data:d,valor:sal,forma:fo,conta,obs:'Baixa em lote',por:me,em:new Date().toISOString()}]});n++;v+=sal}
+    else if(t.fech){const f=t.fech;let pg=0;for(const x of f.pedidos||[])pg+=await pagarPedidoFin(db,x.id,{data:d,forma:fo,obs:'Fechamento #'+f.numero,extra:{fechamentoId:f.id}},me);
+     await db.doc('fechamentos/'+f.id).update({status:'pago',pagoEm:new Date().toISOString(),pagoPor:me,forma:fo});n++;v+=pg}
+    else if(t.ped){const pg=await pagarPedidoFin(db,t.ped.id,{data:d,forma:fo},me);if(pg>0){n++;v+=pg}}}
+   toast(n+' título(s) baixado(s) · '+moeda(v));onClose(true)}catch(e){toast('Erro: '+(e.message||e.code)+' · '+n+' já baixado(s). Pode repetir: o que já foi pago não é lançado de novo.',1)}finally{setS(false);setProg('')}};
+ const nP=itens.filter(t=>t.tipo==='pagar').length,nR=itens.length-nP;
+ return html`<${Modal} title="Baixa em lote" sub=${itens.length+' título(s) · '+moeda(tot)+' · cada um é baixado pelo saldo total'} onClose=${()=>onClose(false)}><div style=${{display:'grid',gap:12}}>
+  <div className="grid g3"><${F} l="Data do pagamento"><input type="date" className="in" value=${d} onChange=${e=>setD(e.target.value)}/><//><${F} l="Forma"><select className="in" value=${fo} onChange=${e=>setFo(e.target.value)}>${Object.entries(FORMAS).map(([k,x])=>html`<option key=${k} value=${k}>${x}</option>`)}</select><//><${F} l="Conta / banco"><input className="in" value=${conta} onChange=${e=>setConta(e.target.value)}/><//></div>
+  <div className="sm mut">${nP?nP+' a pagar':''}${nP&&nR?' · ':''}${nR?nR+' a receber':''}. Pedidos e fechamentos recebem o pagamento no próprio pedido, igual à baixa feita na tela do pedido ou de Fechamentos.</div>
+  <div className="sm" style=${{maxHeight:220,overflowY:'auto',display:'grid',gap:3}}>${itens.map(t=>html`<div key=${t.key}><span className=${'badge '+(t.tipo==='pagar'?'b-red':'b-ok')}>${t.tipo==='pagar'?'Pagar':'Receber'}</span> ${dBR(t.venc)} · ${t.descricao}${t.parcela?' ('+t.parcela+')':''}${t.pessoa?' · '+t.pessoa:''} · <b>${moeda(t.saldo)}</b></div>`)}</div>
+  <div className="row" style=${{justifyContent:'flex-end',gap:10}}>${prog&&html`<span className="sm mut">${prog}</span>`}<button className="btn p" disabled=${s} onClick=${salvar}>${s?'Baixando…':'Confirmar baixa de '+moeda(tot)}</button></div></div><//>`}
+function AlterarLote({db,itens,cats=[],pessoasL=[],me,toast,onClose}){const [modo,setModo]=useState('');const [venc,setVenc]=useState('');const [dias,setDias]=useState('');const [cat,setCat]=useState('');const [fo,setFo]=useState('');const [pes,setPes]=useState('');const [obs,setObs]=useState('');const [can,setCan]=useState(false);const [mot,setMot]=useState('');const [s,setS]=useState(false);
+ const nL=itens.filter(t=>t.doc).length,nO=itens.length-nL;
+ const novoV=t=>modo==='data'&&venc?venc:modo==='dias'&&pn(dias)?addD(t.venc,Math.trunc(pn(dias))):null;
+ const salvar=async()=>{if(can&&!mot.trim())return toast('Informe o motivo do cancelamento',1);if(!can&&!novoV(itens[0]||{venc:diaSP()})&&!cat&&!fo&&!pes.trim()&&!obs.trim())return toast('Escolha o que alterar',1);setS(true);let n=0;
+  try{for(const t of itens){const v=novoV(t);
+    if(t.doc){const u={};if(can){u.cancelado=true;u.motivoCancelamento=mot.trim();u.canceladoEm=new Date().toISOString();u.canceladoPor=me}else{if(v)u.vencimento=v;if(cat)u.categoria=cat;if(fo)u.forma=fo;if(pes.trim())u.pessoa=pes.trim();if(obs.trim())u.obs=[t.doc.obs,obs.trim()].filter(Boolean).join(' · ')}
+     if(Object.keys(u).length){u.atualizadoEm=new Date().toISOString();await db.doc('lancamentos/'+t.doc.id).update(u);n++}}
+    else if(!can){const u={};if(v)u.vencimento=v;if(fo)u.forma=fo;if(Object.keys(u).length){await db.doc((t.fech?'fechamentos/'+t.fech.id:'pedidos/'+t.ped.id)).update(u);n++}}}
+   toast(n+' título(s) alterado(s)');onClose(true)}catch(e){toast('Erro: '+(e.message||e.code)+' · '+n+' já alterado(s)',1)}finally{setS(false)}};
+ return html`<${Modal} lg title="Alterar selecionados" sub=${itens.length+' título(s)'+(nO?' · '+nO+' de pedido/fechamento (nesses só muda vencimento e forma)':'')} onClose=${()=>onClose(false)}><div style=${{display:'grid',gap:12}}>
+  <div className="card pad" style=${{display:'grid',gap:8}}><b className="sm">Vencimento</b><div className="row" style=${{gap:14,flexWrap:'wrap',alignItems:'center'}}>
+   <label className="row sm" style=${{gap:6}}><input type="radio" checked=${modo===''} onChange=${()=>setModo('')}/> Não mudar</label>
+   <label className="row sm" style=${{gap:6}}><input type="radio" checked=${modo==='data'} onChange=${()=>setModo('data')}/> Mudar para <input type="date" className="in" value=${venc} onFocus=${()=>setModo('data')} onChange=${e=>{setModo('data');setVenc(e.target.value)}}/></label>
+   <label className="row sm" style=${{gap:6}}><input type="radio" checked=${modo==='dias'} onChange=${()=>setModo('dias')}/> Adiar <input className="in tab" style=${{width:70}} inputMode="numeric" value=${dias} onFocus=${()=>setModo('dias')} onChange=${e=>{setModo('dias');setDias(e.target.value)}}/> dias <span className="mut">(negativo antecipa)</span></label></div></div>
+  <div className="grid g3"><${F} l="Forma de pagamento"><select className="in" value=${fo} onChange=${e=>setFo(e.target.value)}><option value="">Não mudar</option>${Object.entries(FORMAS).map(([k,x])=>html`<option key=${k} value=${k}>${x}</option>`)}</select><//>
+   <${F} l=${'Categoria'+(nL?'':' (só lançamentos)')}><input className="in" list="fin-cats-l" disabled=${!nL} value=${cat} onChange=${e=>setCat(e.target.value)} placeholder="não mudar"/><datalist id="fin-cats-l">${[...new Set([...CAT_PAGAR,...CAT_RECEBER,...cats])].map(c=>html`<option key=${c} value=${c}/>`)}</datalist><//>
+   <${F} l=${'Cliente / fornecedor'+(nL?'':' (só lançamentos)')}><input className="in" list="fin-pes-l" disabled=${!nL} value=${pes} onChange=${e=>setPes(e.target.value)} placeholder="não mudar"/><datalist id="fin-pes-l">${pessoasL.map(p=>html`<option key=${p} value=${p}/>`)}</datalist><//></div>
+  <${F} l="Acrescentar observação (lançamentos)"><input className="in" disabled=${!nL} value=${obs} onChange=${e=>setObs(e.target.value)}/><//>
+  ${nL>0&&html`<label className="row sm" style=${{gap:6}}><input type="checkbox" checked=${can} onChange=${e=>setCan(e.target.checked)}/> <b style=${{color:'var(--red2)'}}>Cancelar os ${nL} lançamento(s) selecionado(s)</b></label>${can&&html`<input className="in" placeholder="Motivo do cancelamento" value=${mot} onChange=${e=>setMot(e.target.value)}/>`}`}
+  <div className="row" style=${{justifyContent:'flex-end'}}><button className=${'btn '+(can?'d':'p')} disabled=${s} onClick=${salvar}>${s?'Salvando…':can?'Cancelar lançamentos':'Aplicar alterações'}</button></div></div><//>`}
 function LancDetalhe({db,l,me,toast,pode,onEditar,onBaixar,onClose}){const {pago,saldo}=saldoLanc(l);const [can,setCan]=useState(false);const [mot,setMot]=useState('');
  const estornar=async id=>{const m=prompt('Motivo do estorno:');if(m===null)return;try{const ref=db.doc('lancamentos/'+l.id);const cur=(await ref.get()).data();await ref.update({pagamentos:(cur.pagamentos||[]).map(x=>x.id===id?{...x,estornado:true,motivoEstorno:m,estornadoEm:new Date().toISOString(),estornadoPor:me}:x)});toast('Pagamento estornado')}catch(e){toast('Erro: '+(e.message||e.code),1)}};
  const cancelar=async()=>{if(!mot.trim())return toast('Informe o motivo',1);try{await db.doc('lancamentos/'+l.id).update({cancelado:true,motivoCancelamento:mot.trim(),canceladoEm:new Date().toISOString(),canceladoPor:me});toast('Lançamento cancelado');onClose()}catch(e){toast('Erro: '+(e.message||e.code),1)}};
@@ -5644,6 +5679,9 @@ function textoFechamento(f,cfg,pedidosM){const linhas=(f.pedidos||[]).map(x=>{co
 
 /* ---- fechamentos automáticos: períodos já encerrados com pedidos em aberto ---- */
 const PERIODICOS=['diario','semanal','quinzenal','mensal'];
+const PER_TXT={diario:'diário',semanal:'semanal',quinzenal:'quinzenal',mensal:'mensal'};
+/* Cliente com fechamento (diário/semanal/quinzenal/mensal): não recebe cobrança por pedido, só pelo fechamento. */
+const cliFechamento=(p,clientes)=>{const c=(clientes||[]).find(x=>x.id===p?.clienteId);return c&&PERIODICOS.includes(c.condicao)?c:null};
 function periodoDe(dia,cond){if(cond==='diario')return[dia,dia];
  if(cond==='semanal'){const d=new Date(dia+'T12:00:00Z');const w=(d.getUTCDay()+6)%7;const ini=addD(dia,-w);return[ini,addD(ini,6)]}
  const y=+dia.slice(0,4),m=+dia.slice(5,7),dd=+dia.slice(8,10);const ult=new Date(Date.UTC(y,m,0)).getUTCDate();const mm=dia.slice(0,8);
@@ -5663,8 +5701,9 @@ async function gerarFechamento(db,{cliente,inicio,fim,pedidos:ps},fechamentos,cf
  await db.doc('fechamentos/'+id).set({numero:n,clienteId:cliente.id,clienteNome:cliente.nome,periodicidade:cliente.condicao,inicio,fim,vencimento:addD(fim,prazo),criadoEm:new Date().toISOString(),por:me,status:'aberto',auto:!!auto,
   pedidos:ps.sort((a,b)=>a.dia.localeCompare(b.dia)).map(p=>({id:p.id,numero:p.numero,data:p.dia,metros:r3((p.totais?.mt||0)+(p.totais?.mu||0)),valor:r2(p.saldo)})),metros:r3(metros),total:r2(total)});return n}
 const MSG_COBRANCA='Olá, {cliente}! Tudo bem?\n\nConsta em aberto na {empresa} o valor de *{saldo}* referente a {pedidos} pedido(s) (o mais antigo de {desde}).\n\nChave PIX: {pix}\n\nPIX copia e cola (valor já preenchido):\n{pix_copia}\n\nSe já pagou, por favor desconsidere e nos envie o comprovante. Obrigado!';
-function Cobranca({db,pedidos,clientes,cfg,pode,toast}){const [pix,setPix]=useState(null);const [min,setMin]=useState(0);const hoje=diaSP();
- const lista=useMemo(()=>{const m={};for(const p of pedidos){if(p.cancelado||!(p.saldo>0.009))continue;const o=m[p.clienteId]||(m[p.clienteId]={id:p.clienteId,nome:p.clienteNome,q:0,s:0,desde:p.dia});o.q++;o.s+=p.saldo;if(p.dia<o.desde)o.desde=p.dia}
+function Cobranca({db,pedidos,clientes,fechamentos=[],cfg,pode,toast}){const [pix,setPix]=useState(null);const [min,setMin]=useState(0);const hoje=diaSP();
+ const lista=useMemo(()=>{const m={};const per=new Set(clientes.filter(c=>PERIODICOS.includes(c.condicao)).map(c=>c.id));const vencF=new Set();for(const f of fechamentos)if(f.status==='aberto'&&(f.vencimento||f.fim)<hoje)for(const x of f.pedidos||[])vencF.add(x.id);
+  for(const p of pedidos){if(p.cancelado||!(p.saldo>0.009))continue;if(per.has(p.clienteId)&&!vencF.has(p.id))continue;const o=m[p.clienteId]||(m[p.clienteId]={id:p.clienteId,nome:p.clienteNome,q:0,s:0,desde:p.dia});o.q++;o.s+=p.saldo;if(p.dia<o.desde)o.desde=p.dia}
   return Object.values(m).map(o=>({...o,cli:clientes.find(c=>c.id===o.id),dias:diasEntre(o.desde,hoje)-1})).filter(o=>o.dias>=min).sort((a,b)=>b.dias-a.dias||b.s-a.s)},[pedidos,clientes,min]);
  const msg=o=>preencher(cfg.msgCobranca||MSG_COBRANCA,{cliente:(o.nome||'').split(' ')[0],empresa:cfg.empresa.nome,saldo:moeda(o.s),pedidos:o.q,desde:dBR(o.desde),pix:cfg.empresa.pix||'',pix_copia:pixCopiaCola(cfg.empresa,o.s,'COB'+String(o.id).slice(-8))});
  const marcar=async o=>{try{await db.doc('clientes/'+o.id).update({ultimaCobranca:new Date().toISOString()})}catch(e){}};
