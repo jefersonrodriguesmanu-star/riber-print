@@ -5309,19 +5309,19 @@ function Termometro({pct,cor,h=190,rot}){const p=Math.max(0,Math.min(1,(pct||0)/
   ${[0,25,50,75,100].map(t=>html`<g key=${t}><line x1="49" x2="55" y1=${14+tubo-tubo*t/100} y2=${14+tubo-tubo*t/100} stroke="var(--mut)"/><text x="58" y=${18+tubo-tubo*t/100} font-size="9" fill="var(--mut)">${t}</text></g>`)}
   <text x="37" y=${yb+4} font-size="11" font-weight="700" text-anchor="middle" fill="#fff">${num(Math.min(999,pct||0),0)}%</text></svg>`}
 const Barra=({v,meta,cor})=>{const p=meta>0?v/meta*100:0;return html`<div style=${{height:8,background:'var(--soft)',borderRadius:5,overflow:'hidden',minWidth:80}}><div style=${{height:8,width:Math.min(100,p)+'%',background:cor||(p>=100?'var(--ok)':p>=70?'#22c55e':p>=40?'var(--warn)':'var(--red2)'),borderRadius:5}}></div></div>`};
-function dadosMes(pedidos,clientes,mes,desde){const ped=pedidos.filter(p=>!p.cancelado&&!p.interno&&(p.dia||'').slice(0,7)===mes&&(!desde||p.dia>=desde));const mt=p=>(p.totais?.mt||0)+(p.totais?.mu||0);
+function dadosMes(pedidos,clientes,mes,desde){const ped=pedidos.filter(p=>!p.cancelado&&!p.interno&&(p.dia||'').slice(0,7)===mes);const comVend=p=>!desde||p.dia>=desde;const mt=p=>(p.totais?.mt||0)+(p.totais?.mu||0);
  const primeiro={};for(const p of pedidos){if(p.cancelado||p.interno||!p.clienteId||!p.dia)continue;const x=primeiro[p.clienteId];if(!x||p.dia<x.dia||(p.dia===x.dia&&p.numero<x.numero))primeiro[p.clienteId]=p}
- const novos=Object.values(primeiro).filter(p=>p.dia.slice(0,7)===mes&&(!desde||p.dia>=desde));
+ const novos=Object.values(primeiro).filter(p=>p.dia.slice(0,7)===mes);
  const V={};const pv=n=>{const k=(n||'').trim()||'(sem vendedor)';return V[k]||(V[k]={nome:k,fat:0,metros:0,pedidos:0,novos:0,clientes:new Set()})};
- for(const p of ped){const x=pv(p.vendedor);x.fat+=p.cortesia?0:Number(p.total||0);x.metros+=mt(p);x.pedidos++;x.clientes.add(p.clienteId)}
- for(const p of novos)pv(p.vendedor).novos++;
- const D={};for(const p of pedidos){if(p.cancelado||(p.dia||'').slice(0,7)!==mes||(desde&&p.dia<desde)||!(p.designer||'').trim())continue;const k=p.designer.trim();const x=D[k]||(D[k]={nome:k,png:0,sku:0,outro:0,metros:0,pedidos:0});x.pedidos++;x.metros+=mt(p);x[p.designerTipo==='sku'?'sku':p.designerTipo==='png'?'png':'outro']++}
- const O={};for(const p of pedidos){if(p.cancelado||(p.dia||'').slice(0,7)!==mes||(desde&&p.dia<desde)||!(p.operador||'').trim())continue;const k=p.operador.trim();const x=O[k]||(O[k]={nome:k,metros:0,pedidos:0});x.pedidos++;x.metros+=mt(p)}
+ for(const p of ped){if(!comVend(p))continue;const x=pv(p.vendedor);x.fat+=p.cortesia?0:Number(p.total||0);x.metros+=mt(p);x.pedidos++;x.clientes.add(p.clienteId)}
+ for(const p of novos)if(comVend(p))pv(p.vendedor).novos++;
+ const D={};for(const p of pedidos){if(p.cancelado||(p.dia||'').slice(0,7)!==mes||!(p.designer||'').trim())continue;const k=p.designer.trim();const x=D[k]||(D[k]={nome:k,png:0,sku:0,outro:0,metros:0,pedidos:0});x.pedidos++;x.metros+=mt(p);x[p.designerTipo==='sku'?'sku':p.designerTipo==='png'?'png':'outro']++}
+ const O={};for(const p of pedidos){if(p.cancelado||(p.dia||'').slice(0,7)!==mes||!(p.operador||'').trim())continue;const k=p.operador.trim();const x=O[k]||(O[k]={nome:k,metros:0,pedidos:0});x.pedidos++;x.metros+=mt(p)}
  return{fat:sum(ped,p=>p.cortesia?0:Number(p.total||0)),metros:sum(ped,mt),pedidos:ped.length,novos,clientesAtivos:new Set(ped.map(p=>p.clienteId)).size,vend:Object.values(V),des:Object.values(D).sort((a,b)=>b.metros-a.metros),ops:Object.values(O).sort((a,b)=>b.metros-a.metros),porDia:ped.reduce((m,p)=>(m[p.dia]=(m[p.dia]||0)+(p.cortesia?0:Number(p.total||0)),m),{})}}
 function Metas(ctx){const {db,pedidos=[],clientes=[],colaboradores=[],cfg,pode,owner,papel,toast,abrir}=ctx;const [mes,setMes]=useState(mesAtual());const doc=useDoc(db,'metas/'+mes);const M=doc.data||{};const [ed,setEd]=useState(false);const [verNovos,setVerNovos]=useState(null);
  const podeEd=!!(owner||papel==='admin'||pode('colaboradores'));const verFat=pode('fat');
  const desde=cfg.metasDesde||'';const R=useMemo(()=>dadosMes(pedidos,clientes,mes,desde),[pedidos,clientes,mes,desde]);
- const hoje=diaSP();const dIni=desde&&desde.slice(0,7)===mes?desde:mes+'-01';const ultDia=new Date(Date.UTC(+mes.slice(0,4),+mes.slice(5,7),0)).getUTCDate();const dFim=mes+'-'+String(ultDia).padStart(2,'0');
+ const hoje=diaSP();const dIni=mes+'-01';const ultDia=new Date(Date.UTC(+mes.slice(0,4),+mes.slice(5,7),0)).getUTCDate();const dFim=mes+'-'+String(ultDia).padStart(2,'0');
  const d0=+dIni.slice(8,10)-1;const corrido=hoje<dIni?0:hoje>dFim?ultDia-d0:+hoje.slice(8,10)-d0;const ultDiaC=ultDia-d0;const restam=Math.max(0,ultDia-corrido);
  const mFat=Number(M.faturamento??(mes===mesAtual()?cfg.meta:0)??0)||0,mMt=Number(M.metros||0),mPed=Number(M.pedidos||0),mNov=Number(M.clientesNovos||0);
  const proj=v=>corrido>0?v/corrido*ultDiaC:0;const pct=(v,m)=>m>0?v/m*100:null;
@@ -5333,7 +5333,7 @@ function Metas(ctx){const {db,pedidos=[],clientes=[],colaboradores=[],cfg,pode,o
  const falta=Math.max(0,mFat-R.fat);const porDiaNec=restam>0?falta/restam:0;
  const dias=Array.from({length:ultDia},(_,i)=>mes+'-'+String(i+1).padStart(2,'0'));let ac=0;const acum=dias.map(d=>(ac+=R.porDia[d]||0));const mx=Math.max(mFat||0,ac,1);
  return html`<div style=${{display:'grid',gap:12}}>
-  <div className="row between" style=${{flexWrap:'wrap',gap:8}}><div><h1>Metas</h1><div className="sub">Metas do mês, termômetro, vendedores, clientes novos, designers e operadores${desde?' · contando a partir de '+dBR(desde):''}</div></div>
+  <div className="row between" style=${{flexWrap:'wrap',gap:8}}><div><h1>Metas</h1><div className="sub">Metas do mês, termômetro, vendedores, clientes novos, designers e operadores</div></div>
    <div className="row"><button className="btn sm" onClick=${()=>setMes(mesMenos(mes,1))}>‹</button><input type="month" className="in" style=${{width:160}} value=${mes} onChange=${e=>e.target.value&&setMes(e.target.value)}/><button className="btn sm" onClick=${()=>setMes(mesMenos(mes,-1))}>›</button>${podeEd&&html`<button className="btn p" onClick=${()=>setEd(true)}>Definir metas</button>`}</div></div>
   <div className="card pad" style=${{display:'flex',gap:20,alignItems:'center',flexWrap:'wrap'}}>
    <${Termometro} pct=${pct(R.fat,mFat)||0} rot="Meta de faturamento"/>
@@ -5347,7 +5347,7 @@ function Metas(ctx){const {db,pedidos=[],clientes=[],colaboradores=[],cfg,pode,o
   <div className="grid g4"><${Kpi} t="Metros vendidos" v=${R.metros} m=${mMt} fmt=${fMt}/><${Kpi} t="Pedidos" v=${R.pedidos} m=${mPed} fmt=${fN}/>
    <div className="card kpi" style=${{display:'grid',gap:6,cursor:'pointer'}} onClick=${()=>setVerNovos('')}><div className="t">Clientes novos</div><div className="v tab">${R.novos.length}</div>${mNov>0?html`<${Barra} v=${R.novos.length} meta=${mNov}/><div className="sm mut">${num(pct(R.novos.length,mNov),0)}% de ${mNov} · clique para ver</div>`:html`<div className="sm mut">1º pedido no mês · clique para ver</div>`}</div>
    <div className="card kpi"><div className="t">Ticket médio</div><div className="v tab">${R.pedidos?fM(R.fat/R.pedidos):'—'}</div><div className="sm mut">${R.clientesAtivos} cliente(s) compraram no mês</div></div></div>
-  <div className="card"><div className="pad row between" style=${{borderBottom:'1px solid var(--line)'}}><b>Vendedores</b><span className="sm mut">Venda pelo vendedor informado no pedido · cliente novo = 1º pedido do cliente, atribuído ao vendedor desse pedido</span></div>
+  <div className="card"><div className="pad row between" style=${{borderBottom:'1px solid var(--line)'}}><b>Vendedores</b><span className="sm mut">Venda pelo vendedor informado no pedido${desde?' (controle de vendedor desde '+dBR(desde)+')':''} · cliente novo = 1º pedido do cliente, atribuído ao vendedor desse pedido</span></div>
    ${vend.length===0?html`<${Empty} t="Nenhum vendedor" s="Cadastre vendedores em Colaboradores e informe o vendedor nos pedidos."/>`:html`<div className="scroll"><table className="stack"><thead><tr><th>#</th><th>Vendedor</th><th>Faturamento</th><th>Metros</th><th className="r">Pedidos</th><th>Clientes novos</th><th className="r">Ticket</th></tr></thead><tbody>
    ${vend.map((v,i)=>html`<tr key=${v.nome}><td className="tab">${i+1}${i===0&&v.fat>0?' 🏆':''}</td><td><b>${v.nome}</b><div className="sm mut">${v.clientes.size} cliente(s)</div></td>
     <td style=${{minWidth:160}}><div className="row between"><b className="tab">${fM(v.fat)}</b><span className="sm mut">${v.mFat?num(pct(v.fat,v.mFat),0)+'% de '+fM(v.mFat):''}</span></div>${v.mFat>0&&html`<${Barra} v=${v.fat} meta=${v.mFat}/>`}</td>
