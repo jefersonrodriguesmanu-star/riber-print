@@ -176,7 +176,7 @@ function diaTxt(t,comHora){const d=new Date(t),h=new Date(Date.now()-SP_OFF);con
  const am=new Date(h.getTime()+864e5);const base=mesmo(h)?'hoje':mesmo(am)?'amanhã ('+DSEM[d.getUTCDay()]+')':DSEM[d.getUTCDay()]+', '+String(d.getUTCDate()).padStart(2,'0')+'/'+String(d.getUTCMonth()+1).padStart(2,'0');
  return base+(comHora?' por volta das '+d.getUTCHours()+'h'+(d.getUTCMinutes()>=30?'30':''):'')}
 function previsao(metros){if(!S.fila||!(metros>0))return null;const P=prodCfg();if(!P.ativo)return null;const agora=Date.now()-SP_OFF;
- const antes=Number(S.fila.fila||0)+Number(S.fila.online||0);const pronto=somaHoras(agora,(antes+metros)/P.cap,P);
+ const antes=Number(S.fila.fila||0)+Number(S.fila.entrando||0)+Number(S.fila.online||0);const pronto=somaHoras(agora,(antes+metros)/P.cap,P);
  const d=new Date(pronto);const dia0=Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate());let post=pronto<=dia0+hm(P.corte)?pronto:somaHoras(dia0+864e5,0.0001,P);
  return{pronto,post,antes,horasFila:antes/P.cap,P}}
 function previsaoHtml(metros,curta){const v=previsao(metros);if(!v)return'';const fr=S.frete&&Number(S.frete.prazo)>0?Number(S.frete.prazo):0;
