@@ -2566,7 +2566,7 @@ const diasEntre=(a,b)=>Math.round((new Date(b+'T12:00:00Z')-new Date(a+'T12:00:0
 /* ---------------- configuração padrão (editável em Configurações) ---------------- */
 const SETORES={dtf_textil:'DTF Têxtil',dtf_uv:'DTF UV',vestuario:'Vestuário',personalizacao:'Personalização',arte:'Criação de arte',prensa:'Prensa'};
 const UNID={metro_linear:['Metro linear','m'],metro_quadrado:['Metro quadrado','m²'],centimetro:['Centímetro','cm'],unidade:['Unidade','un'],quilograma:['Quilograma','kg'],servico:['Serviço','serv']};
-const FORMAS={pix:'PIX',dinheiro:'Dinheiro',cartao_credito:'Cartão de crédito',cartao_debito:'Cartão de débito',boleto:'Boleto',transferencia:'Transferência'};
+const FORMAS={mercadolivre:'Mercado Livre',pix:'PIX',dinheiro:'Dinheiro',cartao_credito:'Cartão de crédito',cartao_debito:'Cartão de débito',boleto:'Boleto',transferencia:'Transferência'};
 const CONDICOES={antecipado:'Pagamento antecipado',na_retirada:'Na retirada',diario:'Diário',semanal:'Semanal',quinzenal:'Quinzenal',mensal:'Mensal',personalizado:'Prazo personalizado'};
 const ENTREGA={retirada:'Retirada',entrega_local:'Entrega local',correios:'Correios',transportadora:'Transportadora',mercado_livre:'Ponto de envio Mercado Livre (postar até 15h)'};
 /* descrição completa do pedido para o cliente aprovar (variável {detalhes} nas mensagens) */
@@ -2733,9 +2733,15 @@ function erroItem(i,prod,disp){
 const ID_LOJA=['c-loja-propria','c-sc-6a5a342958e9900b29081b0e'];
 const ehLojaPropria=(id,nome)=>ID_LOJA.includes(id)||/^riber print\b/.test(norm(nome||''));
 function normalizar(p,quem){
- if((p.canal==='mercadolivre'||/mercado ?livre/.test(norm(p.clienteNome||'')))&&(!p.entrega||p.entrega==='retirada'))p={...p,canal:p.canal||'mercadolivre',entrega:'mercado_livre'};
+ if(p.canal==='mercadolivre'||/mercado ?livre/.test(norm(p.clienteNome||''))){p={...p,canal:'mercadolivre'};if(!p.entrega||p.entrega==='retirada')p={...p,entrega:'mercado_livre'}}
  if(!p.cancelado&&p.origem!=='scalle'&&ehLojaPropria(p.clienteId,p.clienteNome)&&!(p.interno&&p.cortesia))p={...p,interno:true,cortesia:true,autorizado:true,historico:[...(p.historico||[]),{em:new Date().toISOString(),por:quem,tipo:'financeiro',obs:'Pedido da loja própria RIBER PRINT: não fatura, só baixa matéria-prima'}]};
  const t=totais(p.itens||[],p.frete,p.desconto,{cortesia:p.cortesia,custoExtra:p.custoExtra});
+ /* Mercado Livre: o dinheiro vem pelo próprio ML. Conta no faturamento, mas não gera contas a receber nem cobrança:
+    o saldo é quitado por um pagamento automático "Mercado Livre" (ajustado se o pedido for editado). */
+ if(p.canal==='mercadolivre'&&p.cancelado&&(p.pagamentos||[]).some(x=>x.autoML))p={...p,pagamentos:(p.pagamentos||[]).filter(x=>!x.autoML)};
+ if(p.canal==='mercadolivre'&&!p.cancelado&&p.origem!=='scalle'&&!p.cortesia){const man=(p.pagamentos||[]).filter(x=>!x.autoML);const manPago=r2(sum(man.filter(x=>!x.estornado),x=>x.valor));const falta=r2(Math.max(0,t.total-manPago));
+  const ant=(p.pagamentos||[]).find(x=>x.autoML&&!x.estornado);if(!ant||Math.abs((ant.valor||0)-falta)>0.004){const ag=new Date().toISOString();
+   p={...p,pagamentos:[...man,...(falta>0?[{id:ant?.id||uid(),valor:falta,forma:'mercadolivre',data:ag.slice(0,10),obs:'Recebido pelo Mercado Livre (sem cobrança)',autoML:true,por:quem||null,registradoEm:ant?.registradoEm||ag}]:[])]}}}
  const pago=r2(sum((p.pagamentos||[]).filter(x=>!x.estornado),x=>x.valor));
  const fin=p.cancelado?'cancelado':(t.total>0&&pago>=t.total)||(p.cortesia&&t.total===0)?'pago':pago>0?'parcial':p.autorizado?'faturado':'pendente';
  const hist=[...(p.historico||[])];
