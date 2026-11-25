@@ -4311,7 +4311,9 @@ function PermsDlg({id,papel,perms,nome,onClose,onSalvar}){const base=PAPEIS[pape
 
 
 /* ---------------- etiqueta de envio (Melhor Envio) ---------------- */
-const msgRastreio=(p,e)=>'Olá, '+(p.clienteNome||'').split(' ')[0]+'! Seu pedido #'+p.numero+' foi enviado'+(e.servico?' por '+e.servico:'')+'.\n\nCódigo de rastreio: *'+e.rastreio+'*'+(e.link?'\nAcompanhe: '+e.link:'')+'\n\nQualquer dúvida, estamos à disposição!';
+/* Melhor Rastreio: abre já com o código preenchido e descobre a transportadora sozinho */
+const MR_URL=c=>{const k=String(c||'').trim().replace(/\s+/g,'');return /^https?:/i.test(k)?k:k?'https://melhorrastreio.com.br/rastreio/'+encodeURIComponent(k):''};
+const msgRastreio=(p,e)=>{const cod=(e&&(e.rastreio||e.link))||'';return 'Olá, '+(p.clienteNome||'').split(' ')[0]+'! 📦 Seu pedido #'+p.numero+' foi enviado'+(e&&e.servico?' por '+e.servico:p.freteServico?' por '+p.freteServico:'')+'.\n\n🚚 Acompanhe a entrega por aqui (já abre com o seu código):\n'+MR_URL(cod)+'\n\nCódigo de rastreio: *'+cod+'*\n\nQualquer dúvida, estamos à disposição!'};
 async function marcarRastreioEnviado(db,p){try{await db.doc('pedidos/'+p.id).update({etiqueta:{...p.etiqueta,rastreioEnviado:new Date().toISOString()}})}catch(e){}}
 async function meAcao(body){const sb=window.RP_SB;if(!sb)throw new Error('Disponível só na versão hospedada');const {data,error}=await sb.functions.invoke('frete',{body});
  if(error){let m=error.message;try{const j=await error.context.json();m=j.erro||m}catch(e){}throw new Error(m)}if(data&&data.erro&&data.ok!==false)throw new Error(data.erro);return data}
@@ -5041,9 +5043,9 @@ function Expedicao(ctx){const [unif,setUnif]=useState(null);const ativosF=fechAt
   if(!e||p.etapaId===e.id){const {id:_x,...c}=normalizar(np,me);await db.doc('pedidos/'+p.id).set(c);msg&&toast(msg);return}
   await moverPedido({...ctxM,p:np,etapa:e,pode:k=>k==='mover'?podeM:pode(k)})};
  const nome1=p=>p.clienteNome?' '+String(p.clienteNome).split(' ')[0]:'';const emp=cfg.empresa?.nome||'RIBER PRINT';
- const linkRastreio=(r,p)=>(p&&p.etiqueta&&p.etiqueta.link)||'https://www.melhorrastreio.com.br/rastreio/'+encodeURIComponent(r);
+ const linkRastreio=(r,p)=>MR_URL(r||(p&&p.etiqueta&&(p.etiqueta.rastreio||p.etiqueta.link))||'');
  const msgPronto=p=>'Olá'+nome1(p)+'! Seu pedido #'+p.numero+' da '+emp+' está pronto para retirada.'+(Number(p.saldo||0)>0.009?' Valor a pagar na retirada: '+moeda(p.saldo)+'.':'')+(cfg.empresa?.endereco?' Endereço: '+cfg.empresa.endereco+'.':'')+' Te esperamos!';
- const msgEnviado=(p,r)=>'Olá'+nome1(p)+'! Seu pedido #'+p.numero+' da '+emp+' foi enviado'+(p.freteServico?' por '+p.freteServico:'')+'.'+(r?' Código de rastreio: '+r+' — acompanhe em '+linkRastreio(r,p):'');
+ const msgEnviado=(p,r)=>r?msgRastreio(p,{rastreio:r,servico:p.freteServico}):'Olá'+nome1(p)+'! Seu pedido #'+p.numero+' da '+emp+' foi enviado'+(p.freteServico?' por '+p.freteServico:'')+'.';
  const whatsDe=p=>p.clienteWhats||cliDe(p)?.whatsapp||'';
  const abrirWa=(p,m)=>{const l=waLink(whatsDe(p),m);if(!l)return toast('Cliente sem WhatsApp cadastrado',1);window.open(l,'_blank','noopener')};
  const confirmar=async()=>{const {t,p}=dlg;setS(true);try{
@@ -5074,6 +5076,7 @@ function Expedicao(ctx){const [unif,setUnif]=useState(null);const ativosF=fechAt
     ${podeM&&(aba==='enviar'||aba==='ml')&&subOk==='prontos'&&html`<button className="btn sm" style=${{borderColor:'#c026d3',color:'#c026d3',fontWeight:700}} onClick=${()=>setDlg({t:'saiu',p,quem:(()=>{try{return ''}catch(e){return ''}})()})}>🛵 Saiu para postar</button>`}
     ${podeM&&(aba==='enviar'||aba==='ml')&&subOk==='saiu'&&html`<button className="btn sm" onClick=${async()=>{try{await db.doc('pedidos/'+p.id).update({saiuPostarEm:null,saiuPostarCom:null,historico:[...(p.historico||[]),{em:new Date().toISOString(),por:me,tipo:'entrega',obs:'Voltou sem postar'}]});toast('#'+p.numero+' voltou para prontos')}catch(e){toast('Erro: '+(e.message||e.code),1)}}}>↩ Voltou sem postar</button>`}
     ${podeM&&(aba==='enviar'||aba==='ml')&&(subOk==='prontos'||subOk==='saiu')&&html`<button className="btn sm p" onClick=${()=>setDlg({t:'postar',p,rastreio:r||'',avisar:aba==='enviar'&&!!tel,ml:aba==='ml'})}>📦 ${aba==='ml'?'Postado no ponto ML':'Postado / enviado'}</button>`}
+    ${(aba==='enviar'||aba==='ml')&&(r||p.etiqueta?.rastreio)&&tel&&html`<a className=${'btn sm'+(p.etiqueta?.rastreioEnviado?'':' p')} href=${waLink(tel,msgRastreio(p,{...(p.etiqueta||{}),rastreio:r||p.etiqueta?.rastreio,servico:p.etiqueta?.servico||p.freteServico}))} target="_blank" rel="noreferrer" title="Abre o WhatsApp com o link do Melhor Rastreio já com o código" onClick=${()=>{if(p.etiqueta)marcarRastreioEnviado(db,p);else db.doc('pedidos/'+p.id).update({etiqueta:{rastreio:r,rastreioEnviado:new Date().toISOString()}}).catch(()=>{})}}>🚚 ${p.etiqueta?.rastreioEnviado?'Reenviar rastreio':'Enviar rastreio'}</a>`}
     ${(aba==='enviar'||aba==='ml')&&subOk==='enviados'&&tel&&html`<button className="btn sm" onClick=${()=>enviarAcomp({db,p,cfg,toast,whats:tel})} title="Manda o link de acompanhamento do nosso site, que mostra o rastreio">💬 Mandar rastreio (link do site)</button>`}
     ${podeM&&(aba==='enviar'||aba==='ml')&&subOk==='enviados'&&html`<button className="btn sm p" style=${{background:'var(--ok)',borderColor:'var(--ok)'}} onClick=${()=>setDlg({t:'entregue',p,quem:''})}>✓ ${aba==='ml'?'Concluído':'Entregue'}</button>`}
     ${aba==='retirar'&&subOk==='prontos'&&tel&&html`<button className="btn sm" onClick=${()=>avisar(p)}>💬 ${p.avisadoProntoEm?'Avisar de novo':'Avisar que está pronto'}</button>`}

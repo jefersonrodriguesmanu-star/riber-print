@@ -43,7 +43,7 @@ function render(o){const cur=o.passos[o.atual]||o.passos[0];const wa=o.whatsapp?
  if(o.cancelado)h+=`<div class="card" style="margin-top:16px"><div class="msg err">Este pedido foi cancelado. Se tiver alguma dúvida, fale com a gente.</div></div>`;
  else if(o.recusado)h+=`<div class="card" style="margin-top:16px"><div class="msg err">Não conseguimos aprovar este pedido${o.motivo?': '+esc(o.motivo):''}. Fale com a gente para resolver.</div></div>`;
  else{h+=`<div class="card" style="margin-top:16px"><div class="hero"><div class="ic">${ICON[cur.k]||'📦'}</div><p class="st">${esc(cur.t)}<small>${esc(cur.d)}${cur.em?' · '+dh(cur.em):''}</small></p></div>
-  ${o.rastreio?`<p style="margin:14px 0 0"><a class="btn2" href="${esc(o.rastreioLink)}" target="_blank" rel="noopener">🚚 Rastrear envio: ${esc(o.rastreio)}</a></p>`:''}
+  ${o.rastreio?`<p style="margin:14px 0 0"><a class="btn2" href="https://melhorrastreio.com.br/rastreio/${encodeURIComponent(o.rastreio)}" target="_blank" rel="noopener">🚚 Rastrear envio: ${esc(o.rastreio)}</a></p>`:''}
   ${cur.k==='retirada'&&o.endereco?`<p class="sm" style="margin:12px 0 0">📍 Retire em: <b>${esc(o.endereco)}</b>${o.horario?'<br>🕒 '+esc(o.horario):''}</p>`:''}</div>
   <div class="card"><ul class="tl">${o.passos.map((x,i)=>`<li class="${x.ok?'ok':''} ${i===o.atual?'cur':''}"><div class="dot">${x.ok?'✓':''}</div><div><b>${esc(x.t)}</b><span>${x.ok?esc(x.d)+(x.em?' · '+dh(x.em):''):''}</span></div></li>`).join('')}</ul></div>`}
  h+=`<div class="card"><b>Resumo do pedido</b><div style="margin-top:8px">${(o.itens||[]).map(i=>`<div class="row"><span>${esc(i.descricao)}</span><span class="tab">${num(i.qtd,3)} ${UN[i.unidade]||''}</span></div>`).join('')}
