@@ -3482,22 +3482,44 @@ const impressoP=p=>!!p.impressoEm||(SET_IMP.some(s=>p.ordens&&p.ordens[s])&&SET_
    volta para a fila só com os metros que faltam. metrosP = metros A IMPRIMIR; metrosTot = metros do pedido inteiro. */
 const mtItem=i=>i&&(i.tipoDtf==='textil'||i.tipoDtf==='uv')?metrosItem(i):0;
 const metrosTot=p=>(p.totais?.mt||0)+(p.totais?.mu||0);
-const metrosP=p=>{const it=p.itens||[];return it.some(i=>i.impressoEm)?r3(sum(it,i=>i.impressoEm?0:mtItem(i))):metrosTot(p)};
+const metrosP=p=>{const it=p.itens||[];const b=it.some(i=>i.impressoEm)?r3(sum(it,i=>i.impressoEm?0:mtItem(i))):metrosTot(p);return Math.max(0,r3(b-(Number(p.mtParcial)||0)))};
 /* Eventos de impressão do pedido: os anteriores (impressoHist, guardados ao unificar) + o atual. _mt = metros impressos naquele evento. */
 const eventosImp=p=>p.cancelado?[]:[...(p.impressoHist||[]),...(p.impressoEm?[{em:p.impressoEm,mt:p.impressoMt,maquinaId:p.maquinaId,maquinaNome:p.maquinaNome,imprimindoEm:p.imprimindoEm}]:[])]
  .map(e=>({...p,impressoEm:e.em,maquinaId:e.maquinaId,maquinaNome:e.maquinaNome,imprimindoEm:e.imprimindoEm,_mt:e.mt!=null?Number(e.mt):metrosTot(p)})).filter(x=>x.impressoEm&&x._mt>0);
 const metrosImp=x=>x._mt!=null?x._mt:metrosTot(x);
 const durTxt=ms=>{const m=Math.max(0,Math.round(ms/6e4));return m<60?m+' min':Math.floor(m/60)+'h'+String(m%60).padStart(2,'0')};
+/* Pausas de impressão: resumo no cartão da fila. */
+function PausaInfo({p}){const ps=p.pausas||[];const ult=ps[ps.length-1];const arqs=(p.arquivos||[]).filter(a=>(p.arquivosImpressos||[]).includes(a.path||a.nome));const tot=metrosTot(p);
+ return html`<div className="sm" style=${{marginTop:6,padding:'6px 8px',borderRadius:8,background:'#f59e0b1f',border:'1px solid #f59e0b55'}}>
+  <div style=${{fontWeight:700,color:'#b45309'}}>${p.pausadoEm?'⏸ Pausado '+esperaTxt(p.pausadoEm):'Já impresso antes da pausa'}</div>
+  <div>${num(Number(p.mtParcial)||0)} m impressos de ${num(tot)} m · falta(m) <b>${num(metrosP(p))} m</b>${p.tempoImpMs?' · '+durTxt(p.tempoImpMs)+' de impressão':''}</div>
+  ${(p.arquivos||[]).length>0&&html`<div>Arquivos impressos: ${arqs.length} de ${(p.arquivos||[]).length}${arqs.length?html`<div className="mut" style=${{wordBreak:'break-word'}}>✓ ${arqs.map(a=>a.nome).join(' · ')}</div>`:''}</div>`}
+  ${ps.filter(x=>x.obs).map((x,i)=>html`<div key=${i} className="mut">📝 ${ddmm(x.em.slice(0,10))}: ${x.obs}</div>`)}
+  ${ult&&!p.pausadoEm?'':''}</div>`}
+function PausarDlg({p,agora,vel,onClose,onOk}){const arqs=p.arquivos||[];const ja=new Set(p.arquivosImpressos||[]);const k=a=>a.path||a.nome;
+ const [sel,setSel]=useState(()=>new Set(ja));const mtArq=a=>r3((Number(a.alturaCm)||0)*(Number(a.qtd)||1)/100);
+ const novosMt=r3(sum(arqs.filter(a=>sel.has(k(a))&&!ja.has(k(a))),mtArq));const v=pn(String(vel||'').replace(',','.'));const est=v>0&&p.imprimindoEm?r3(Math.min(metrosP(p),(agora-Date.parse(p.imprimindoEm))/36e5*v)):0;
+ const [mt,setMt]=useState('');const [mtMan,setMtMan]=useState(false);const [obs,setObs]=useState('');const [s,setS]=useState(false);
+ const mtVal=mtMan?mt:String(novosMt>0?novosMt:est||'').replace('.',',');const n=pn(String(mtVal).replace(',','.'))||0;const resta=metrosP(p);
+ const tog=a=>{if(ja.has(k(a)))return;const x=new Set(sel);x.has(k(a))?x.delete(k(a)):x.add(k(a));setSel(x)};
+ return html`<${Modal} lg title=${'Pausar impressão do #'+p.numero} sub=${p.clienteNome+' · '+num(resta)+' m a imprimir'+(p.imprimindoEm?' · imprimindo há '+durTxt(agora-Date.parse(p.imprimindoEm)):'')} onClose=${onClose}><div style=${{display:'grid',gap:12}}>
+  ${arqs.length>0&&html`<div><div className="sm b" style=${{marginBottom:6}}>Arquivos já impressos (marque o que saiu da máquina)</div>
+   <div className="card" style=${{maxHeight:260,overflowY:'auto'}}>${arqs.map(a=>html`<label key=${k(a)} className="row" style=${{gap:8,padding:'7px 10px',borderBottom:'1px solid var(--line)',opacity:ja.has(k(a))?.6:1}}><input type="checkbox" checked=${sel.has(k(a))} disabled=${ja.has(k(a))} onChange=${()=>tog(a)}/><span style=${{flex:1,wordBreak:'break-word'}}>${a.nome}${ja.has(k(a))?html` <span className="sm mut">(impresso antes)</span>`:''}</span><span className="sm mut tab">${a.alturaCm?num(mtArq(a))+' m':''}</span></label>`)}</div>
+   <div className="row" style=${{gap:6,marginTop:6}}><button className="btn sm" onClick=${()=>setSel(new Set(arqs.map(k)))}>Marcar todos</button><button className="btn sm" onClick=${()=>setSel(new Set(ja))}>Limpar</button></div></div>`}
+  <div className="grid g2"><${F} l="Metros impressos agora"><input className="in" inputMode="decimal" value=${mtVal} onChange=${e=>{setMt(e.target.value);setMtMan(true)}} placeholder="ex.: 30,5"/><//>
+   <div className="sm" style=${{alignSelf:'end',paddingBottom:8}}>${novosMt>0&&!mtMan?'Somado pelos arquivos marcados. ':est>0&&!mtMan?'Estimado pela velocidade da máquina. ':''}Falta(m) depois da pausa: <b>${num(Math.max(0,r3(resta-n)))} m</b>${n>resta?html` <span style=${{color:'var(--red2)'}}>(maior que o que falta; vai ficar ${num(resta)} m)</span>`:''}</div></div>
+  <${F} l="Observação para quem continuar"><textarea className="in" rows="3" value=${obs} onChange=${e=>setObs(e.target.value)} placeholder="ex.: parei no 3º arquivo, metade da folha; trocar o filme antes de retomar"></textarea><//>
+  <div className="row" style=${{justifyContent:'flex-end',gap:8}}><button className="btn" onClick=${onClose}>Voltar</button><button className="btn p" disabled=${s} onClick=${async()=>{setS(true);try{await onOk({mt:n,obs,arqs:[...sel]})}finally{setS(false)}}}>⏸ Pausar e apontar ${num(Math.min(n,resta))} m</button></div></div><//>`}
 function FilaMaquinas(ctx){
  const {pedidos,maquinas=[],cfg,pode,toast,abrir,db,me}=ctx;
  const [agora,setAgora]=useState(Date.now());useEffect(()=>{const t=setInterval(()=>setAgora(Date.now()),20000);return()=>clearInterval(t)},[]);
- const [alvo,setAlvo]=useState(null);const drag=useRef(null);const [q,setQ]=useState('');const [gerando,setGerando]=useState('');const [rel,setRel]=useState(null);
+ const [alvo,setAlvo]=useState(null);const [pausar,setPausar]=useState(null);const drag=useRef(null);const [q,setQ]=useState('');const [gerando,setGerando]=useState('');const [rel,setRel]=useState(null);
  const hojeSP=diaSP();const impDia=(m,d0,d1)=>pedidos.flatMap(eventosImp).filter(p=>(m===undefined||(p.maquinaId||'')===m)&&diaSP(p.impressoEm)>=d0&&diaSP(p.impressoEm)<=d1);
  const maqs=maquinas.filter(m=>m.ativo!==false&&m.status!=='inativa').sort((a,b)=>String(a.nome).localeCompare(String(b.nome),'pt-BR',{numeric:true}));
  const idsMaq=new Set(maqs.map(m=>m.id));
  const naMaq=p=>!p.cancelado&&p.origem!=='scalle'&&!impressoP(p)&&metrosP(p)>0&&(p.etapaId==='imprimindo'||naFila(p));
  const todos=pedidos.filter(naMaq).filter(p=>!q||String(p.numero).includes(dig(q)||'~')||norm(p.clienteNome).includes(norm(q)));
- const ordem=(a,b)=>(a.etapaId==='imprimindo'?0:1)-(b.etapaId==='imprimindo'?0:1)||ORD_KB(a)-ORD_KB(b)||a.numero-b.numero;
+ const rk=p=>p.etapaId==='imprimindo'?0:p.pausadoEm?1:2;const ordem=(a,b)=>rk(a)-rk(b)||ORD_KB(a)-ORD_KB(b)||a.numero-b.numero;
  const colunas=[{id:'',nome:'Fila consolidada',sub:'Pedidos ainda sem máquina',cor:'#71717a'},...maqs.map(m=>({id:m.id,nome:m.nome,sub:[m.fabricante,m.modelo].filter(Boolean).join(' · '),cor:m.status==='operando'?'#16a34a':'#f59e0b',m}))];
  const daCol=id=>todos.filter(p=>(idsMaq.has(p.maquinaId)?p.maquinaId:'')===id).sort(ordem);
  const etapa=id=>cfg.etapas.find(e=>e.id===id);
@@ -3512,20 +3534,30 @@ function FilaMaquinas(ctx){
    toast('#'+p.numero+' → '+(colunas.find(c=>c.id===colId)?.nome||'')+' ('+(lista.indexOf(p)+1)+'º)')}catch(e){toast('Erro: '+(e.message||e.code),1)}};
  const imprimir=async(p,m)=>{if(!pode('mover'))return toast('Sem permissão.',1);const e=etapa('imprimindo');if(!e)return toast('Crie a etapa "Imprimindo" nas configurações.',1);
   const setor=m&&m.tipo==='uv'?'dtf_uv':'dtf_textil';const ag=new Date().toISOString();
-  const np={...p,maquinaId:m.id,maquinaNome:m.nome,imprimindoEm:ag,ordens:{...(p.ordens||{}),...(p.ordens&&p.ordens[setor]?{[setor]:'em_andamento'}:{})}};
+  const np={...p,maquinaId:m.id,maquinaNome:m.nome,imprimindoEm:ag,pausadoEm:null,...(p.pausadoEm?{historico:[...(p.historico||[]),{em:ag,por:me,tipo:'producao',obs:'Impressão retomada na '+m.nome+' ('+num(Number(p.mtParcial)||0)+' m já impressos)'}]}:{}),ordens:{...(p.ordens||{}),...(p.ordens&&p.ordens[setor]?{[setor]:'em_andamento'}:{})}};
   if(p.etapaId==='imprimindo')return salvarP(np,'#'+p.numero+' imprimindo na '+m.nome);
   await moverPedido({...ctx,p:np,etapa:e})};
  const impresso=async p=>{if(!pode('mover'))return toast('Sem permissão.',1);const ag=new Date().toISOString();
   const ord={...(p.ordens||{})};for(const s of SET_IMP)if(ord[s])ord[s]='concluida';
-  const np={...p,impressoEm:ag,impressoMt:metrosP(p),itens:(p.itens||[]).map(i=>mtItem(i)>0&&!i.impressoEm?{...i,impressoEm:ag}:i),ordens:ord,historico:[...(p.historico||[]),{em:ag,por:me,tipo:'producao',obs:'Impresso'+(p.maquinaNome?' na '+p.maquinaNome:'')+(p.imprimindoEm?' ('+durTxt(Date.parse(ag)-Date.parse(p.imprimindoEm))+')':'')}]};
+  const tTot=(Number(p.tempoImpMs)||0)+(p.imprimindoEm?Date.parse(ag)-Date.parse(p.imprimindoEm):0);const np={...p,impressoEm:ag,impressoMt:metrosP(p),mtParcial:0,pausadoEm:null,tempoImpMs:tTot,itens:(p.itens||[]).map(i=>mtItem(i)>0&&!i.impressoEm?{...i,impressoEm:ag}:i),ordens:ord,historico:[...(p.historico||[]),{em:ag,por:me,tipo:'producao',obs:'Impresso'+(p.maquinaNome?' na '+p.maquinaNome:'')+(tTot>0?' ('+durTxt(tTot)+(p.tempoImpMs?' no total, com pausas':'')+')':'')}]};
   const e=proxEtapa();if(e&&p.etapaId!==e.id){const ok=await moverPedido({...ctx,p:np,etapa:e});return ok}
   await salvarP(np,'#'+p.numero+' impresso')};
+ /* Pausar (fim do dia): para o relógio, aponta os metros e arquivos já impressos e deixa o pedido no topo da fila da mesma máquina. */
+ const confirmarPausa=async(p,{mt,obs,arqs})=>{const e=etapa('fila');if(!e)return toast('Crie a etapa "Na fila" nas configurações.',1);const ag=new Date().toISOString();
+  const resta=metrosP(p);const m=Math.max(0,Math.min(r3(Number(mt)||0),resta));const sess=p.imprimindoEm?Date.parse(ag)-Date.parse(p.imprimindoEm):0;
+  const novos=arqs.filter(x=>!(p.arquivosImpressos||[]).includes(x));const nomes=(p.arquivos||[]).filter(a=>novos.includes(a.path||a.nome)).map(a=>a.nome);
+  const pausa={em:ag,por:me,mt:m,obs:String(obs||'').trim(),arquivos:nomes,maquinaNome:p.maquinaNome||null,tempoMs:sess};
+  const np={...p,imprimindoEm:null,pausadoEm:ag,mtParcial:r3((Number(p.mtParcial)||0)+m),tempoImpMs:(Number(p.tempoImpMs)||0)+sess,arquivosImpressos:[...new Set([...(p.arquivosImpressos||[]),...arqs])],pausas:[...(p.pausas||[]),pausa],
+   impressoHist:m>0?[...(p.impressoHist||[]),{em:ag,mt:m,maquinaId:p.maquinaId||null,maquinaNome:p.maquinaNome||null,imprimindoEm:p.imprimindoEm||null,parcial:true}]:(p.impressoHist||[]),
+   historico:[...(p.historico||[]),{em:ag,por:me,tipo:'producao',obs:'Impressão pausada'+(p.maquinaNome?' na '+p.maquinaNome:'')+': '+num(m)+' m impressos'+(sess>0?' em '+durTxt(sess):'')+(nomes.length?' · arquivos: '+nomes.join(', '):'')+(pausa.obs?' · '+pausa.obs:'')}]};
+  setPausar(null);await moverPedido({...ctx,p:np,etapa:e});toast('#'+p.numero+' pausado · '+num(m)+' m apontados, falta(m) '+num(Math.max(0,r3(resta-m)))+' m')};
  const voltar=async p=>{const e=etapa('fila');if(!e)return;await moverPedido({...ctx,p:{...p,imprimindoEm:null},etapa:e})};
  const res=colunas.map(c=>{const ps=daCol(c.id);const imp=ps.filter(p=>p.etapaId==='imprimindo');const fila=ps.filter(p=>p.etapaId!=='imprimindo');
   const vel=c.m?pn(String(c.m.velocidade||'').replace(',','.')):0;const mt=sum(fila,metrosP);const mi=sum(imp,metrosP);
   const feitos=c.id?impDia(c.id,hojeSP,hojeSP):[];const andamento=sum(imp,p=>vel>0&&p.imprimindoEm?Math.min(metrosP(p),(agora-Date.parse(p.imprimindoEm))/36e5*vel):0);
   return {...c,ps,imp,fila,mt,mi,vel,horas:vel>0?(mt+mi)/vel:0,feitos,mHoje:sum(feitos,metrosImp),andamento}});
  const tot={ped:todos.length,mt:sum(todos,metrosP)};
+ const pausedFresh=p=>pedidos.find(x=>x.id===p.id)||p;
  const telaCheia=()=>{const el=document.getElementById('rp-filamaq');try{document.fullscreenElement?document.exitFullscreen():el&&el.requestFullscreen&&el.requestFullscreen()}catch(e){}};
  const Card=({p,c,i})=>{const m=c.m;const imp=p.etapaId==='imprimindo';const at=p.previsao&&new Date(p.previsao)<new Date();
   return html`<div key=${p.id} className=${'kbslot'+(alvo&&alvo.k===p.id?(alvo.depois?' depois':' antes'):'')}
@@ -3534,13 +3566,14 @@ function FilaMaquinas(ctx){
    <div className=${'tk'+(p.prioridade==='urgente'?' urg':p.prioridade==='alta'?' alta':'')} draggable=${!imp} style=${imp?{borderColor:'#d946ef',boxShadow:'0 0 0 2px #d946ef33',cursor:'default'}:null}
     onDragStart=${e=>{drag.current=p;e.dataTransfer.effectAllowed='move';try{e.dataTransfer.setData('text/plain',p.id)}catch(_){}}}>
     <div className="row between"><span className="row" style=${{gap:6}}><span className="sm mut tab">${imp?'▶':i+'º'}</span><button style=${{border:0,background:'none',padding:0,fontWeight:700,cursor:'pointer'}} onClick=${()=>abrir('pedido',p.id)}>#${p.numero}</button></span><b className="tab">${num(metrosP(p))} m</b></div>
-    <div className="sm" style=${{marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${p.clienteNome}</div><${ObsPed} p=${p}/>
+    <div className="sm" style=${{marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${p.clienteNome}</div><${ObsPed} p=${p}/>${(p.pausadoEm||(p.pausas||[]).length>0&&p.mtParcial>0)&&html`<${PausaInfo} p=${p}/>`}
     <div className="row sm mut" style=${{gap:6,marginTop:4,flexWrap:'wrap'}}>${p.prioridade==='urgente'&&html`<span className="badge" style=${{background:'#fee2e2',color:'#b91c1c'}}>Urgente</span>`}${p.prioridade==='alta'&&html`<span className="badge" style=${{background:'#fef3c7',color:'#92400e'}}>Alta</span>`}${at&&html`<span className="badge" style=${{background:'#fee2e2',color:'#b91c1c'}}>Atrasado</span>`}
-     ${imp?html`<span style=${{color:'#c026d3',fontWeight:700}}>Imprimindo há ${durTxt(agora-Date.parse(p.imprimindoEm||p.etapaDesde||agora))}</span>`:html`<span>espera ${esperaTxt(p.criadoEm).replace('há ','')}</span>`}</div>
+     ${imp?html`<span style=${{color:'#c026d3',fontWeight:700}}>Imprimindo há ${durTxt(agora-Date.parse(p.imprimindoEm||p.etapaDesde||agora))}${p.tempoImpMs?' (+'+durTxt(p.tempoImpMs)+' antes da pausa)':''}</span>`:html`<span>espera ${esperaTxt(p.criadoEm).replace('há ','')}</span>`}</div>
     ${p.loteSku&&!(p.arquivos||[]).some(a=>a.montado)&&html`<div style=${{marginTop:6}}><button className="btn sm" disabled=${!!gerando} onClick=${async()=>{const l=(ctx.lotesSku||[]).find(x=>x.pedidoId===p.id);if(!l||!l.layout)return toast('Lote sem montagem salva. Gere de novo em Estampas por SKU.',1);setGerando(p.id);try{const n=await anexarPngLote({db,me,lote:l,prog:m=>/^Enviando/.test(m)&&!/bloco/.test(m)&&toast(m)});toast(n+' PNG anexado(s) ao #'+p.numero)}catch(e){toast(e.message||String(e),1)}finally{setGerando('')}}}>📎 ${gerando===p.id?'Gerando PNG…':'Gerar PNG do lote'}</button></div>`}
     ${(p.arquivos||[]).some(a=>a.path)&&html`<div className="row" style=${{gap:6,marginTop:6,flexWrap:'wrap'}}><${BaixarPngBtn} p=${p} cfg=${cfg} toast=${toast} cls="btn sm"/></div>`}
     ${pode('mover')&&html`<div className="row" style=${{gap:6,marginTop:8,flexWrap:'wrap'}}>
-     ${imp?html`<button className="btn sm p" onClick=${()=>impresso(p)}>✓ Impresso</button><button className="btn sm" onClick=${()=>voltar(p)}>↩ Voltar à fila</button>`
+     ${imp?html`<button className="btn sm p" onClick=${()=>impresso(p)}>✓ Impresso</button><button className="btn sm" title="Para o tempo e aponta o que já foi impresso, para continuar depois" onClick=${()=>setPausar(p)}>⏸ Pausar</button><button className="btn sm" onClick=${()=>voltar(p)}>↩ Voltar à fila</button>`
+      :m&&p.pausadoEm?html`<button className="btn sm p" onClick=${()=>imprimir(p,m)}>▶ Retomar impressão</button>`
       :m?html`<button className="btn sm p" onClick=${()=>imprimir(p,m)}>▶ Imprimir agora</button>`
       :html`<select className="in" style=${{minHeight:30,fontSize:12,width:'100%'}} value="" onChange=${e=>{const id=e.target.value;if(id)mover(p,id,null,false)}}><option value="">Mandar para a máquina…</option>${maqs.map(x=>html`<option key=${x.id} value=${x.id}>${x.nome}</option>`)}</select>`}</div>`}
    </div></div>`};
@@ -3559,6 +3592,7 @@ function FilaMaquinas(ctx){
    <div className="sm mut tab" style=${{padding:'0 12px 8px',marginTop:-6}}>${num(c.mt+c.mi)} m${c.sub?' · '+c.sub:''}</div>
    <div className="bd">${c.ps.length?(()=>{let n=0;return c.ps.map(p=>Card({p,c,i:p.etapaId==='imprimindo'?0:++n}))})():html`<div className="sm mut" style=${{padding:12,textAlign:'center'}}>${c.id?'Arraste pedidos para cá':'Nenhum pedido sem máquina'}</div>`}</div></div>`)}</div>
   ${!maqs.length&&html`<div className="card pad sm mut" style=${{marginTop:12}}>Nenhuma máquina cadastrada. Cadastre em Produção → Máquinas.</div>`}
+  ${pausar&&html`<${PausarDlg} p=${pausedFresh(pausar)} agora=${agora} vel=${(maqs.find(x=>x.id===pausar.maquinaId)||{}).velocidade} onClose=${()=>setPausar(null)} onOk=${d=>confirmarPausa(pedidos.find(x=>x.id===pausar.id)||pausar,d)}/>`}
   ${rel&&(()=>{const L=impDia(undefined,rel.de,rel.ate).sort((a,b)=>String(a.impressoEm).localeCompare(String(b.impressoEm)));const grupos=[...maqs.map(m=>({id:m.id,nome:m.nome})),{id:'',nome:'Sem máquina informada'}].map(g=>{const ps=L.filter(p=>(idsMaq.has(p.maquinaId)?p.maquinaId:'')===g.id);const t=ps.filter(p=>p.imprimindoEm).map(p=>Date.parse(p.impressoEm)-Date.parse(p.imprimindoEm)).filter(x=>x>0);return{...g,ps,m:sum(ps,metrosImp),tempo:t.length?sum(t,x=>x):0}}).filter(g=>g.ps.length||g.id);
    const tit='Relatório de impressão por máquina · '+(rel.de===rel.ate?dBR(rel.de):dBR(rel.de)+' a '+dBR(rel.ate));
    const imprimir=()=>{const esc=x=>String(x??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));const w=window.open('','_blank');if(!w)return toast('Permita pop-ups para imprimir',1);
@@ -5342,7 +5376,7 @@ function juntarPedidos(main,secs,cfg){const et=(cfg.etapas||[]).map(e=>e.id);con
  }
  const txt=(k,sep)=>todos.map(p=>String(p[k]||'').trim()).filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(sep);
  const prodEm=todos.map(p=>p.producaoEm).filter(Boolean).sort()[0];const consEm=todos.map(p=>p.consumoEm).filter(Boolean).sort()[0];
- return{...main,itens,ordens,consumoLancado:lanc,statusProd,etapaId,etapaDesde:etapaId!==main.etapaId?ag:main.etapaDesde,...imp,impressoHist:hist,...(prodEm?{producaoEm:prodEm}:{}),...(consEm?{consumoEm:consEm}:{}),
+ return{...main,itens,ordens,consumoLancado:lanc,statusProd,etapaId,etapaDesde:etapaId!==main.etapaId?ag:main.etapaDesde,...imp,impressoHist:hist,mtParcial:r3(sum(todos,p=>Number(p.mtParcial)||0)),pausas:todos.flatMap(p=>p.pausas||[]),arquivosImpressos:todos.flatMap(p=>p.arquivosImpressos||[]),pausadoEm:pendMt>0?(todos.find(p=>p.pausadoEm)||{}).pausadoEm||null:null,...(prodEm?{producaoEm:prodEm}:{}),...(consEm?{consumoEm:consEm}:{}),
   arquivos:todos.flatMap(p=>p.arquivos||[]),pagamentos:[...(main.pagamentos||[]),...secs.flatMap(s=>(s.pagamentos||[]).map(x=>({...x,obs:[x.obs,'veio do pedido #'+s.numero].filter(Boolean).join(' · ')})))],
   desconto:r2(sum(todos,p=>Number(p.desconto||0))),custoExtra:r2(sum(todos,p=>Number(p.custoExtra||0))),frete:r2(sum(todos,p=>Number(p.frete||0))),
   autorizado:todos.some(p=>p.autorizado),obsInterna:txt('obsInterna',' | '),obsCliente:txt('obsCliente',' | '),
