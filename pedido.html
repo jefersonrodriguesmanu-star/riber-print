@@ -174,7 +174,7 @@ function somaHoras(ini,h,P){let t=ini;for(let k=0;k<800;k++){const d=new Date(t)
 function proxUtil(t,P,n){let d=new Date(t),c=0;while(c<n){d=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()+1));const w=d.getUTCDay();if(w>=1&&w<=5)c++}return d.getTime()}
 function diaTxt(t,comHora){const d=new Date(t),h=new Date(Date.now()-SP_OFF);const mesmo=x=>x.getUTCFullYear()===d.getUTCFullYear()&&x.getUTCMonth()===d.getUTCMonth()&&x.getUTCDate()===d.getUTCDate();
  const am=new Date(h.getTime()+864e5);const base=mesmo(h)?'hoje':mesmo(am)?'amanhã ('+DSEM[d.getUTCDay()]+')':DSEM[d.getUTCDay()]+', '+String(d.getUTCDate()).padStart(2,'0')+'/'+String(d.getUTCMonth()+1).padStart(2,'0');
- return base+(comHora?' por volta das '+d.getUTCHours()+'h'+(d.getUTCMinutes()>=30?'30':''):'')}
+ return base+(comHora?' por volta das '+(()=>{const m=Math.ceil((d.getUTCHours()*60+d.getUTCMinutes())/10)*10;return Math.floor(m/60)+'h'+String(m%60).padStart(2,'0')})().replace('h00','h'):'')}
 function previsao(metros){if(!S.fila||!(metros>0))return null;const P=prodCfg();if(!P.ativo)return null;const agora=Date.now()-SP_OFF;
  const antes=Number(S.fila.fila||0)+Number(S.fila.entrando||0)+Number(S.fila.online||0);const pronto=somaHoras(agora,(antes+metros)/P.cap,P);
  const d=new Date(pronto);const dia0=Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate());let post=pronto<=dia0+hm(P.corte)?pronto:somaHoras(dia0+864e5,0.0001,P);
@@ -182,7 +182,8 @@ function previsao(metros){if(!S.fila||!(metros>0))return null;const P=prodCfg();
 function previsaoHtml(metros,curta){const v=previsao(metros);if(!v)return'';const fr=S.frete&&Number(S.frete.prazo)>0?Number(S.frete.prazo):0;
  const linha=S.entrega==='envio'?`<div>📦 Postagem prevista: <b>${diaTxt(v.post)}</b>${fr?`<br>🚚 Entrega estimada: <b>até ${diaTxt(proxUtil(v.post,v.P,fr))}</b> (${fr} dia${fr>1?'s úteis':' útil'} da transportadora)`:'<br><span class="hint">Escolha o frete para ver a data estimada de entrega.</span>'}</div>`
   :S.entrega==='local'?`<div>🛵 Entrega a partir de <b>${diaTxt(v.post)}</b></div>`:`<div>🏬 Pronto para retirar a partir de <b>${diaTxt(v.pronto,true)}</b></div>`;
- return `<div class="prev" style="border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:10px 0;font-size:14px;line-height:1.5;background:rgba(127,127,127,.05)"><b>⏱️ Previsão do seu pedido</b><div>🖨️ Impresso ${diaTxt(v.pronto,true)}</div>${linha}${curta?'':`<div class="hint" style="margin-top:4px">${v.antes>0.01?'Temos '+num(v.antes,0)+' m na fila de impressão na sua frente (~'+num(v.horasFila,1)+' h). ':''}É uma previsão pela nossa fila de hoje, não um prazo garantido; confirmamos pelo WhatsApp depois de conferir as artes.</div>`}</div>`}
+ const dur=h=>{const m=Math.max(1,Math.round(h*60));return m<60?m+' min':Math.floor(m/60)+'h'+String(m%60).padStart(2,'0')};
+ return `<div class="prev" style="border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:10px 0;font-size:14px;line-height:1.5;background:rgba(127,127,127,.05)"><b>⏱️ Previsão do seu pedido</b><div>🖨️ Impresso ${diaTxt(v.pronto,true)}</div><div>🧮 Fila na frente: ${num(v.antes)} m (~${dur(v.antes/v.P.cap)}) + seu pedido: <b>${num(metros)} m</b> (~${dur(metros/v.P.cap)} de impressão a ${num(v.P.cap)} m/h)</div>${linha}${curta?'':`<div class="hint" style="margin-top:4px">É uma previsão pela nossa fila de hoje, não um prazo garantido; confirmamos pelo WhatsApp depois de conferir as artes.</div>`}</div>`}
 async function carregarFila(){try{const {data,error}=await sb.rpc('rp_fila_previsao');if(!error&&data){S.fila=data;render()}}catch(e){}}
 function render(){
  if(!S.cfg){app.innerHTML='<div class="hero"><h1>Carregando…</h1></div>';return}
