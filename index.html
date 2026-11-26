@@ -3976,7 +3976,7 @@ const fmtIns=(i,q,d=3)=>num(q,d)+' '+(i?.unidade||'')+(embIns(i)?' ('+qtdEmb(i,q
 const QtdUn=({i,v,set,em,setEm,w=100,ph})=>{const e=embIns(i);return html`<span className="row" style=${{gap:4,flexWrap:'nowrap',display:'inline-flex'}}><input className="in tab" style=${{width:w,textAlign:'right'}} inputMode="decimal" placeholder=${ph||''} value=${v} onChange=${x=>set(x.target.value)}/>${e?html`<select className="in" style=${{width:'auto',padding:'0 6px'}} value=${em?'e':'b'} onChange=${x=>setEm(x.target.value==='e')}><option value="e">${plurEmb(2,e.un)}</option><option value="b">${i.unidade}</option></select>`:html`<span className="sm mut">${i?.unidade||''}</span>`}</span>`};
 const UN_INS=['m','m2','ml','l','g','kg','un'];
 const MOTIVOS=['Erro de impressão','Falha de tinta branca','Falha de cabeça de impressão','Problema no filme','Erro no arquivo','Erro operacional','Problema de cura','Problema de aplicação','Testes','Manutenção','Outros'];
-const FINALIDADES={producao:'Produção',reimpressao:'Reimpressão',teste:'Teste',interna:'Interna',perda:'Perda'};
+const FINALIDADES={producao:'Produção',reimpressao:'Reimpressão',teste:'Teste',interna:'Interna',perda:'Perda',descarte:'Descarte'};
 
 const espera=ms=>new Promise(k=>setTimeout(k,ms));
 const grupoOk=(tipo,g)=>g==='geral'||(tipo==='textil'&&g==='dtf_textil')||(tipo==='uv'&&g==='dtf_uv');
@@ -3986,6 +3986,11 @@ const grupoOk=(tipo,g)=>g==='geral'||(tipo==='textil'&&g==='dtf_textil')||(tipo=
 const BAIXA_PADRAO={ativo:true,desde:'2026-11-20T22:44:00.000Z',desdeProducao:'2026-11-21T20:40:00.000Z',textil:'',uv:''};
 const EM_PROD=['em_producao','pronto','entregue'];
 let BAIXA=BAIXA_PADRAO;
+/* Com a baixa pelos pedidos, o registro de impressão abate só os descartes: todo o custo lançado é custo de descarte. */
+const porPedidoReg=r=>!!(BAIXA&&BAIXA.ativo&&(r.criadoEm||'')>=BAIXA.desde);
+const custoDesc=r=>r.cancelado?0:porPedidoReg(r)?Number(r.custoMateriais||0):Number(r.custoDescarte||0);
+/* Quantidade de cada matéria-prima consumida pelos metros descartados de um registro. */
+const qtdDesc=r=>{if(r.cancelado||!(pn(r.descartados)>0))return{};const l=r.lancado||{};if(porPedidoReg(r))return l;const k=pn(r.metros)>0?pn(r.descartados)/pn(r.metros):0;return Object.fromEntries(Object.entries(l).map(([i,q])=>[i,r3(Number(q)*k)]))};
 function consumoDesejado(reg,maquinas,insumos){if(reg.cancelado)return{};const m=maquinas.find(x=>x.id===reg.maquinaId);const pf=(m&&m.perfis||[]).find(p=>p.id===reg.perfilId);const out={};
  const porPedido=BAIXA&&BAIXA.ativo&&reg.criadoEm>=BAIXA.desde;const base=porPedido?pn(reg.descartados):pn(reg.metros);
  for(const f of (pf&&pf.ficha)||[]){const ins=insumos.find(i=>i.id===f.insumoId);if(!ins||!grupoOk(reg.tipo,ins.grupo))continue;const q=r3(pn(f.qtd)*base);if(q)out[f.insumoId]=q}
@@ -4027,7 +4032,7 @@ async function aplicarConsumo(db,reg,ctx){const des=consumoDesejado(reg,ctx.maqu
   if(dif!==0){await movimentarInsumo(db,id,-dif,{tipo:dif>0?'consumo':'estorno',ref:'Impressão '+reg.codigo,lid:reg.id+':'+id+':'+antes+'>'+alvo,por:ctx.me});
    if(alvo)lanc[id]=alvo;else delete lanc[id];await db.doc('impressoes/'+reg.id).update({lancado:lanc})}
   const ins=ctx.insumos.find(i=>i.id===id);custo+=alvo*Number(ins&&ins.custoMedio||0)}
- return{lancado:lanc,custoMateriais:r2(custo),custoDescarte:pn(reg.metros)>0?r2(custo*pn(reg.descartados)/pn(reg.metros)):0}}
+ return{lancado:lanc,custoMateriais:r2(custo),custoDescarte:porPedidoReg(reg)?r2(custo):pn(reg.metros)>0?r2(custo*pn(reg.descartados)/pn(reg.metros)):0}}
 const horasReg=r=>{if(r.cancelado||!r.inicio||!r.fim)return 0;const [a,b]=[r.inicio,r.fim].map(x=>{const [h,m]=x.split(':').map(Number);return h*60+m});return Math.max(0,(b>=a?b-a:b+1440-a))/60};
 function previsaoPerfil(pf,insumos,impressoes){const rec=impressoes.filter(r=>!r.cancelado&&r.perfilId===pf.id&&r.data>=addD(diaSP(),-29));const dias=new Set(rec.map(r=>r.data)).size;const media=dias?sum(rec,r=>r.metros)/dias:0;
  let lim=null,ins=null;for(const f of pf.ficha||[]){const i=insumos.find(x=>x.id===f.insumoId);if(!i||!(pn(f.qtd)>0))continue;const m=Math.max(0,Number(i.estoque||0))/pn(f.qtd);if(lim==null||m<lim){lim=m;ins=i}}
@@ -4203,7 +4208,7 @@ function MaquinaForm({db,m,insumos,impressoes=[],pedidos=[],toast,me,onClose,pod
 
 function Impressoes(ctx){const {impressoes,maquinas,insumos,pode,cfg}=ctx;const [per,setPer]=useState('7d');const [tipo,setTipo]=useState('');const [ed,setEd]=useState(null);
  const [ini,fim]=intervalo(per);const ls=impressoes.filter(r=>r.data>=ini&&r.data<=fim&&(!tipo||r.tipo===tipo));const at=ls.filter(r=>!r.cancelado);
- const mt=sum(at,r=>r.metros),ds=sum(at,r=>r.descartados),cm=sum(at,r=>r.custoMateriais),cd=sum(at,r=>r.custoDescarte),hs=sum(at,horasReg);const mq=Object.fromEntries(maquinas.map(m=>[m.id,m]));
+ const mt=sum(at,r=>r.metros),ds=sum(at,r=>r.descartados),cm=sum(at,r=>r.custoMateriais),cd=sum(at,custoDesc),hs=sum(at,horasReg);const mq=Object.fromEntries(maquinas.map(m=>[m.id,m]));
  return html`<div><div className="row between" style=${{marginBottom:14}}><div><h1>Central de impressão</h1><div className="sub">Cada registro abate a matéria-prima pela ficha do perfil, incluindo os metros descartados.</div></div>
    <div className="row"><select className="in" style=${{width:170}} value=${per} onChange=${e=>setPer(e.target.value)}>${PERIODOS.filter(p=>p[0]!=='pers').map(([v,l])=>html`<option key=${v} value=${v}>${l}</option>`)}</select>
     <select className="in" style=${{width:140}} value=${tipo} onChange=${e=>setTipo(e.target.value)}><option value="">Têxtil e UV</option><option value="textil">DTF Têxtil</option><option value="uv">DTF UV</option></select>
@@ -4220,7 +4225,7 @@ function Impressoes(ctx){const {impressoes,maquinas,insumos,pode,cfg}=ctx;const 
     <td className="r tab b">${num(r.metros)} m</td><td className="r tab" style=${{color:r.descartados>0?'var(--red2)':''}}>${r.descartados>0?num(r.descartados)+' m':'—'}</td>
     <td className="sm hide-s">${(r.pedidos||[]).map(x=>'#'+x.numero).join(', ')||'—'}</td>${pode('custos')&&html`<td className="r tab">${moeda(r.custoMateriais)}</td>`}<td>${r.cancelado&&html`<${Badge} c="b-red">Cancelado<//>`}</td></tr>`})}
    </tbody></table></div>`}</div>
-  ${ed&&html`<${ImpressaoForm} ...${ctx} reg=${ed.id?ed:null} onClose=${()=>setEd(null)}/>`}</div>`}
+  ${ed&&html`<${ed.finalidade==='descarte'?DescarteForm:ImpressaoForm} ...${ctx} reg=${ed.id?ed:null} onClose=${()=>setEd(null)}/>`}</div>`}
 function ImpressaoForm(ctx){const {db,reg,maquinas,insumos,pedidos,me,pode,toast,onClose}=ctx;const novo=!reg;
  const [f,setF]=useState(()=>({data:diaSP(),inicio:'',fim:'',maquinaId:maquinas[0]?.id||'',perfilId:'',operador:ctx.meuNome||'',operadorId:me,turno:'',finalidade:'producao',programados:'',metros:'',descartados:'0',motivo:'',obs:'',pedidos:[],consumoReal:{},concluir:false,...(reg||{}),
   metros:String(reg?.metros??''),descartados:String(reg?.descartados??0),programados:String(reg?.programados??'')}));
@@ -4252,7 +4257,7 @@ function ImpressaoForm(ctx){const {db,reg,maquinas,insumos,pedidos,me,pode,toast
     <${F} l="Turno"><select className="in" value=${f.turno} onChange=${so('turno')}><option value="">—</option><option value="manha">Manhã</option><option value="tarde">Tarde</option><option value="noite">Noite</option><option value="integral">Integral</option></select><//>
     <${F} l="Máquina"><select className="in" value=${f.maquinaId} onChange=${so('maquinaId')}>${maquinas.map(x=>html`<option key=${x.id} value=${x.id}>${x.nome} (${x.tipo==='uv'?'UV':'Têxtil'})</option>`)}</select><//>
     <${F} l="Perfil"><select className="in" value=${f.perfilId} onChange=${so('perfilId')}><option value="">Sem perfil (não abate)</option>${perfis.map(p=>html`<option key=${p.id} value=${p.id}>${p.nome}</option>`)}</select><//>
-    <${QuemFez} ctx=${ctx} l="Operador" fixo=${reg&&reg.operador&&(reg.operadorId||'')!==me?reg.operador:''} v=${{id:f.operadorId||'',nome:f.operador}} set=${x=>setF(y=>({...y,operadorId:x.id,operador:x.nome}))}/><${F} l="Finalidade"><select className="in" value=${f.finalidade} onChange=${so('finalidade')}>${Object.entries(FINALIDADES).map(([k,v])=>html`<option key=${k} value=${k}>${v}</option>`)}</select><//>
+    <${QuemFez} ctx=${ctx} l="Operador" fixo=${reg&&reg.operador&&(reg.operadorId||'')!==me?reg.operador:''} v=${{id:f.operadorId||'',nome:f.operador}} set=${x=>setF(y=>({...y,operadorId:x.id,operador:x.nome}))}/><${F} l="Finalidade"><select className="in" value=${f.finalidade} onChange=${so('finalidade')}>${Object.entries(FINALIDADES).filter(([k])=>k!=='descarte').map(([k,v])=>html`<option key=${k} value=${k}>${v}</option>`)}</select><//>
     <${F} l="Metros programados"><input className="in tab" inputMode="decimal" value=${f.programados} onChange=${so('programados')}/><//><${F} l="Metros impressos *"><input className="in tab" inputMode="decimal" value=${f.metros} onChange=${so('metros')}/><//>
     <${F} l="Metros descartados"><input className="in tab" inputMode="decimal" value=${f.descartados} onChange=${so('descartados')}/><//>
     <${F} l="Motivo do descarte"><select className="in" value=${f.motivo} onChange=${so('motivo')}><option value="">—</option>${MOTIVOS.map(x=>html`<option key=${x}>${x}</option>`)}</select><//></div>
@@ -4277,12 +4282,77 @@ function ImpressaoForm(ctx){const {db,reg,maquinas,insumos,pedidos,me,pode,toast
    ${!novo&&ed&&html`<button className="btn d" onClick=${()=>setCancel(true)}>Cancelar registro (estorna o estoque)</button>`}</div></div></div></fieldset>
   ${cancel&&html`<${MotivoDlg} titulo="Cancelar impressão" aviso="Toda a matéria-prima lançada por este registro volta ao estoque." onClose=${()=>setCancel(false)} onOk=${mo=>{setCancel(false);salvar(true,mo)}}/>`}<//>`}
 
-function Descartes({impressoes,maquinas,pode}){const [per,setPer]=useState('30d');const [ini,fim]=intervalo(per);const at=impressoes.filter(r=>!r.cancelado&&r.data>=ini&&r.data<=fim);const ds=at.filter(r=>r.descartados>0);
- const tot=sum(at,r=>r.metros),td=sum(ds,r=>r.descartados);const ag=(f)=>{const o={};for(const r of ds){const k=f(r)||'—';o[k]=o[k]||{m:0,c:0,n:0};o[k].m+=r.descartados;o[k].c+=r.custoDescarte||0;o[k].n++}return Object.entries(o).sort((a,b)=>b[1].m-a[1].m)};
- const mq=Object.fromEntries(maquinas.map(m=>[m.id,m.nome]));const Bloco=({t,d})=>{const mx=Math.max(1,...d.map(x=>x[1].m));return html`<div className="card pad"><h2>${t}</h2><div style=${{display:'grid',gap:9,marginTop:10}}>${d.length===0?html`<div className="sm mut">Sem descartes.</div>`:d.map(([k,v])=>html`<div key=${k}><div className="row between sm"><span>${k}</span><span className="tab"><b>${num(v.m)} m</b>${pode('custos')?' · '+moeda(v.c):''}</span></div><div className="hbar"><i style=${{width:(v.m/mx*100)+'%'}}></i></div></div>`)}</div></div>`};
- return html`<div><div className="row between" style=${{marginBottom:14}}><div><h1>Descartes e qualidade</h1><div className="sub">${pct(tot?td/tot*100:null)} de desperdício · ${num(td)} m de ${num(tot)} m impressos</div></div>
-  <select className="in" style=${{width:180}} value=${per} onChange=${e=>setPer(e.target.value)}>${PERIODOS.filter(p=>p[0]!=='pers').map(([v,l])=>html`<option key=${v} value=${v}>${l}</option>`)}</select></div>
-  <div className="grid g3"><${Bloco} t="Por motivo" d=${ag(r=>r.motivo)}/><${Bloco} t="Por máquina" d=${ag(r=>mq[r.maquinaId])}/><${Bloco} t="Por operador" d=${ag(r=>r.operador)}/></div></div>`}
+function Descartes(ctx){const {impressoes,maquinas,insumos,pode}=ctx;const [per,setPer]=useState('30d');const [ed,setEd]=useState(null);const [ini,fim]=intervalo(per);
+ const at=impressoes.filter(r=>!r.cancelado&&r.data>=ini&&r.data<=fim);const ds=at.filter(r=>pn(r.descartados)>0);
+ const lista=impressoes.filter(r=>r.data>=ini&&r.data<=fim&&(pn(r.descartados)>0||r.finalidade==='descarte')).sort((a,b)=>(b.data+(b.criadoEm||'')).localeCompare(a.data+(a.criadoEm||'')));
+ const tot=sum(at,r=>r.metros),td=sum(ds,r=>r.descartados),tc=sum(ds,custoDesc);const vc=pode('custos');
+ const ag=(f)=>{const o={};for(const r of ds){const k=f(r)||'—';o[k]=o[k]||{m:0,c:0,n:0};o[k].m+=pn(r.descartados);o[k].c+=custoDesc(r);o[k].n++}return Object.entries(o).sort((a,b)=>b[1].m-a[1].m)};
+ const mp={};for(const r of ds)for(const [i,q] of Object.entries(qtdDesc(r)))mp[i]=r3((mp[i]||0)+Number(q));
+ const mpL=Object.entries(mp).map(([id,q])=>{const i=insumos.find(x=>x.id===id);return{id,i,q,v:q*Number(i?.custoMedio||0)}}).filter(x=>x.q>0).sort((a,b)=>b.v-a.v||b.q-a.q);
+ const mq=Object.fromEntries(maquinas.map(m=>[m.id,m]));const Bloco=({t,d})=>{const mx=Math.max(1,...d.map(x=>x[1].m));return html`<div className="card pad"><h2>${t}</h2><div style=${{display:'grid',gap:9,marginTop:10}}>${d.length===0?html`<div className="sm mut">Sem descartes.</div>`:d.map(([k,v])=>html`<div key=${k}><div className="row between sm"><span>${k}</span><span className="tab"><b>${num(v.m)} m</b>${vc?' · '+moeda(v.c):''}</span></div><div className="hbar"><i style=${{width:(v.m/mx*100)+'%'}}></i></div></div>`)}</div></div>`};
+ return html`<div><div className="row between" style=${{marginBottom:14}}><div><h1>Descartes e qualidade</h1><div className="sub">Lance aqui os metros impressos que foram jogados fora. A matéria-prima gasta é abatida do estoque e o custo é calculado.</div></div>
+  <div className="row"><select className="in" style=${{width:180}} value=${per} onChange=${e=>setPer(e.target.value)}>${PERIODOS.filter(p=>p[0]!=='pers').map(([v,l])=>html`<option key=${v} value=${v}>${l}</option>`)}</select>
+   ${pode('imprimir')&&html`<button className="btn p" disabled=${!maquinas.length} title=${maquinas.length?'':'Cadastre uma máquina'} onClick=${()=>setEd({})}><${Ic} n="plus"/>Lançar descarte</button>`}</div></div>
+  <div className="grid g4" style=${{marginBottom:12}}>
+   <div className="card kpi hero"><div className="t">Metros descartados</div><div className="v tab">${num(td)} m</div><div className="sm mut">${ds.length} ocorrência(s)</div></div>
+   ${vc&&html`<div className="card kpi"><div className="t">Custo da matéria-prima descartada</div><div className="v tab" style=${{color:tc>0?'var(--red2)':''}}>${moeda(tc)}</div><div className="sm mut">${td>0?moeda(tc/td)+' por metro':''}</div></div>`}
+   <div className="card kpi"><div className="t">Desperdício</div><div className="v tab">${pct(tot?td/tot*100:null)}</div><div className="sm mut">sobre ${num(tot)} m registrados na Central</div></div>
+   <div className="card kpi"><div className="t">Matérias-primas atingidas</div><div className="v tab">${mpL.length}</div><div className="sm mut">baixadas do estoque</div></div></div>
+  <div className="card" style=${{marginBottom:12}}>${lista.length===0?html`<${Empty} t="Nenhum descarte no período" s="Use “Lançar descarte” quando um metro impresso não puder ir para o cliente."/>`:html`
+   <div className="scroll"><table><thead><tr><th>Data</th><th>Origem</th><th className="hide-s">Máquina / perfil</th><th>Motivo</th><th className="hide-s">Operador</th><th className="r">Metros</th>${vc&&html`<th className="r">Custo</th>`}<th></th></tr></thead><tbody>
+   ${lista.map(r=>{const m=mq[r.maquinaId];const pf=(m&&m.perfis||[]).find(p=>p.id===r.perfilId);const av=r.finalidade==='descarte';return html`<tr key=${r.id} className="hov" style=${{opacity:r.cancelado?.45:1}} onClick=${()=>setEd(r)}>
+    <td className="nw"><b>${dBR(r.data)}</b><div className="sm mut">${r.codigo||''}</div></td>
+    <td>${av?'Descarte lançado':'Registro de impressão'}<div className="sm mut">${r.pedidoRef?'Pedido #'+r.pedidoRef.numero:(r.pedidos||[]).map(x=>'#'+x.numero).join(', ')}</div></td>
+    <td className="hide-s">${m?.nome||'—'}<div className="sm mut">${pf?.nome||'sem perfil'}</div></td><td className="sm">${r.motivo||'—'}</td><td className="hide-s">${r.operador||'—'}</td>
+    <td className="r tab b" style=${{color:'var(--red2)'}}>${num(r.descartados)} m</td>${vc&&html`<td className="r tab">${moeda(custoDesc(r))}</td>`}<td>${r.cancelado&&html`<${Badge} c="b-red">Cancelado<//>`}</td></tr>`})}
+   </tbody></table></div>`}</div>
+  <div className="card pad" style=${{marginBottom:12}}><h2>Matéria-prima gasta com descartes</h2><div className="sm mut" style=${{marginBottom:8}}>Quantidade já abatida do estoque no período${vc?' e valor pelo custo médio atual':''}.</div>
+   ${mpL.length===0?html`<div className="sm mut">Nada abatido no período.</div>`:html`<div className="scroll"><table><thead><tr><th>Matéria-prima</th><th className="r">Quantidade</th>${vc&&html`<th className="r">Valor</th>`}</tr></thead><tbody>
+    ${mpL.map(x=>html`<tr key=${x.id}><td>${x.i?.nome||'Insumo removido'}</td><td className="r tab">${num(x.q,3)} ${x.i?.unidade||''}</td>${vc&&html`<td className="r tab">${moeda(x.v)}</td>`}</tr>`)}
+    <tr><td><b>Total</b></td><td></td>${vc&&html`<td className="r tab"><b>${moeda(sum(mpL,x=>x.v))}</b></td>`}</tr></tbody></table></div>`}</div>
+  <div className="grid g3"><${Bloco} t="Por motivo" d=${ag(r=>r.motivo)}/><${Bloco} t="Por máquina" d=${ag(r=>mq[r.maquinaId]?.nome)}/><${Bloco} t="Por operador" d=${ag(r=>r.operador)}/></div>
+  ${ed&&html`<${ed.id&&ed.finalidade!=='descarte'?ImpressaoForm:DescarteForm} ...${ctx} reg=${ed.id?ed:null} onClose=${()=>setEd(null)}/>`}</div>`}
+
+/* Lançamento avulso de descarte: metros impressos que não puderam ir para o cliente. Abate a matéria-prima pela ficha do perfil. */
+function DescarteForm(ctx){const {db,reg,maquinas,insumos,pedidos,me,pode,toast,onClose}=ctx;const novo=!reg;
+ const [f,setF]=useState(()=>({data:diaSP(),maquinaId:(maquinas.find(x=>x.status!=='inativa')||maquinas[0])?.id||'',perfilId:'',operador:ctx.meuNome||'',operadorId:me,motivo:'',obs:'',pedidoId:'',...(reg||{}),pedidoId:reg?.pedidoRef?.pedidoId||'',descartados:String(reg?.descartados??'')}));
+ const [s,setS]=useState(false);const [cancel,setCancel]=useState(false);const m=maquinas.find(x=>x.id===f.maquinaId);const perfis=m?.perfis||[];
+ useEffect(()=>{if(!perfis.some(p=>p.id===f.perfilId))setF(x=>({...x,perfilId:perfis[0]?.id||''}))},[f.maquinaId]);
+ const tipo=m?.tipo||'textil';const met=pn(f.descartados);const criadoEm=reg?.criadoEm||new Date().toISOString();
+ const des=consumoDesejado({...f,tipo,metros:met,descartados:met,consumoReal:{},criadoEm,cancelado:null},maquinas,insumos);
+ const linhas=Object.entries(des).map(([id,q])=>{const i=insumos.find(x=>x.id===id);return{id,i,q,v:q*Number(i?.custoMedio||0)}}).filter(x=>x.i);const total=sum(linhas,x=>x.v);
+ const vc=pode('custos');const peds=pedidos.filter(p=>!p.cancelado||p.id===f.pedidoId).slice().sort((a,b)=>Number(b.numero||0)-Number(a.numero||0)).slice(0,300);
+ const erro=!m?'Selecione a máquina':!f.perfilId?'Selecione o perfil (é a ficha que diz quanto de cada matéria-prima vai por metro)':!(met>0)?'Informe os metros descartados':!f.motivo?'Informe o motivo do descarte':null;
+ const salvar=async(cancelar,motivoC)=>{if(!cancelar&&erro)return toast(erro,1);setS(true);
+  try{const id=reg?.id||'im'+uid();const codigo=reg?.codigo||('DESC-'+f.data.replace(/-/g,'').slice(2)+'-'+uid().slice(-3).toUpperCase());const p=pedidos.find(x=>x.id===f.pedidoId);
+   const corpo={data:f.data,inicio:'',fim:'',turno:'',maquinaId:f.maquinaId,perfilId:f.perfilId,operador:f.operador,operadorId:f.operadorId,finalidade:'descarte',programados:0,metros:met,descartados:met,aproveitados:0,motivo:f.motivo,obs:f.obs||'',
+    pedidos:[],pedidoRef:p?{pedidoId:p.id,numero:p.numero,clienteNome:p.clienteNome||''}:null,consumoReal:{},codigo,tipo,lancado:reg?.lancado||{},horasLancadas:0,criadoEm,por:reg?.por||me,editadoEm:new Date().toISOString(),
+    cancelado:cancelar?{em:new Date().toISOString(),por:me,motivo:motivoC}:(reg?.cancelado||null)};
+   await db.doc('impressoes/'+id).set(corpo);const r=await aplicarConsumo(db,{...corpo,id},ctx);await db.doc('impressoes/'+id).update(r);
+   toast(cancelar?'Descarte cancelado · matéria-prima devolvida ao estoque':novo?'Descarte lançado · matéria-prima abatida do estoque':'Descarte atualizado · estoque ajustado pela diferença');onClose()}
+  catch(e){toast('Erro: '+(e.message||e.code),1)}finally{setS(false)}};
+ const so=k=>e=>setF({...f,[k]:e.target.value});const ed=pode('imprimir')&&!reg?.cancelado;
+ return html`<${Modal} lg title=${novo?'Lançar descarte':'Descarte '+reg.codigo} sub=${reg?.cancelado?'Cancelado: '+reg.cancelado.motivo:'Metros impressos que não puderam ir para o cliente. A matéria-prima é abatida pela ficha do perfil.'} onClose=${onClose}>
+ <fieldset disabled=${!ed} style=${{border:0,padding:0,margin:0}}><div className="grid" style=${{gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:16}}>
+  <div style=${{display:'grid',gap:14,alignContent:'start'}}>
+   <div className="grid g2"><${F} l="Data"><input type="date" className="in" value=${f.data} onChange=${so('data')}/><//>
+    <${F} l="Metros descartados *"><input className="in tab" inputMode="decimal" autoFocus=${novo} placeholder="ex.: 1,5" value=${f.descartados} onChange=${so('descartados')}/><//>
+    <${F} l="Máquina"><select className="in" value=${f.maquinaId} onChange=${so('maquinaId')}>${maquinas.map(x=>html`<option key=${x.id} value=${x.id}>${x.nome} (${x.tipo==='uv'?'UV':'Têxtil'})</option>`)}</select><//>
+    <${F} l="Perfil (ficha de consumo) *"><select className="in" value=${f.perfilId} onChange=${so('perfilId')}><option value="">Selecione…</option>${perfis.map(p=>html`<option key=${p.id} value=${p.id}>${p.nome}</option>`)}</select><//>
+    <${F} l="Motivo *"><select className="in" value=${f.motivo} onChange=${so('motivo')}><option value="">Selecione…</option>${MOTIVOS.map(x=>html`<option key=${x}>${x}</option>`)}</select><//>
+    <${QuemFez} ctx=${ctx} l="Operador" fixo=${reg&&reg.operador&&(reg.operadorId||'')!==me?reg.operador:''} v=${{id:f.operadorId||'',nome:f.operador}} set=${x=>setF(y=>({...y,operadorId:x.id,operador:x.nome}))}/></div>
+   <${F} l="Pedido relacionado (opcional)"><select className="in" value=${f.pedidoId} onChange=${so('pedidoId')}><option value="">Nenhum</option>${peds.map(p=>html`<option key=${p.id} value=${p.id}>#${p.numero} · ${p.clienteNome||''}</option>`)}</select><//>
+   <${F} l="Observações"><textarea className="in" placeholder="O que aconteceu?" value=${f.obs} onChange=${so('obs')}></textarea><//></div>
+  <div><div className="card pad" style=${{display:'grid',gap:8}}><h2>Matéria-prima gasta</h2>
+   ${!perfis.length?html`<div className="sm" style=${{color:'var(--warn)'}}>Esta máquina não tem perfil com ficha de consumo. Cadastre em Máquinas.</div>`:linhas.length===0?html`<div className="sm mut">${met>0?'O perfil não tem ficha de consumo para este tipo de DTF.':'Informe os metros para ver o cálculo.'}</div>`:null}
+   ${linhas.map(x=>html`<div key=${x.id} style=${{borderBottom:'1px solid var(--line)',paddingBottom:6}}><div className="row between sm"><b>${x.i.nome}</b><span className="tab">${num(x.q,3)} ${x.i.unidade}</span></div>
+     <div className="row between sm mut"><span>saldo ${num(x.i.estoque,3)} ${x.i.unidade}</span>${vc&&html`<span className="tab">${moeda(x.v)}</span>`}</div></div>`)}
+   ${vc&&linhas.length>0&&html`<div><div className="row between"><b>Custo do descarte</b><b className="tab" style=${{color:'var(--red2)'}}>${moeda(total)}</b></div><div className="sm mut">${met>0?moeda(total/met)+' por metro · ':''}pelo custo médio atual</div></div>`}
+   <div className="sm mut">${novo?'Ao lançar, essas quantidades saem do estoque.':'Ao salvar, só a diferença é lançada no estoque.'}</div>
+   ${ed&&html`<button className="btn p" disabled=${s||!!erro} onClick=${()=>salvar(false)}>${s?'Lançando…':novo?'Lançar descarte e abater estoque':'Salvar e ajustar estoque'}</button>`}
+   ${erro&&html`<div className="sm" style=${{color:'var(--red2)'}}>${erro}</div>`}
+   ${!novo&&ed&&html`<button className="btn d" onClick=${()=>setCancel(true)}>Cancelar descarte (devolve ao estoque)</button>`}</div></div></div></fieldset>
+  ${cancel&&html`<${MotivoDlg} titulo="Cancelar descarte" aviso="Toda a matéria-prima lançada por este descarte volta ao estoque." onClose=${()=>setCancel(false)} onOk=${mo=>{setCancel(false);salvar(true,mo)}}/>`}<//>`}
 
 /* ---------------- equipe e permissões ---------------- */
 const PERMS=[['fat','Ver faturamento e valores'],['custos','Ver custos e margens'],['criar','Criar pedidos'],['editar','Editar pedidos'],['cancelar','Cancelar pedidos'],['mover','Mover no Kanban'],['pagar','Registrar pagamentos e fechamentos'],['autorizar','Autorizar produção faturada'],['ops','Atualizar ordens de produção'],['imprimir','Registrar impressões'],['estoque','Matéria-prima e máquinas'],['clientes','Cadastrar clientes'],['produtos','Cadastrar produtos'],['precos','Alterar preços no pedido'],['colaboradores','Cadastrar colaboradores'],['exportar','Exportar dados'],['entregas','Fazer entregas (aba Entregas)'],['metricas','Ver métricas do site de pedidos']];
@@ -4394,7 +4464,7 @@ function montarRel(tipo,ini,fim,ctx,f){const {pedidos=[],impressoes=[],fechament
   return{col:['Colaborador','Vendas','Metros vendidos','Faturamento','Comissão venda','Operados','Metros operados','Comissão operação','Total'],num:[1,2,3,4,5,6,7,8],lin:a.map(x=>[x.n,x.qv,num(x.mv),moeda(x.fv),moeda(x.cv),x.qo,num(x.mo),moeda(x.co),moeda(x.t)]),tot:['Total',sum(a,x=>x.qv),num(sum(a,x=>x.mv)),moeda(sum(a,x=>x.fv)),moeda(sum(a,x=>x.cv)),sum(a,x=>x.qo),num(sum(a,x=>x.mo)),moeda(sum(a,x=>x.co)),moeda(sum(a,x=>x.t))],res:[['Total de comissões',moeda(sum(a,x=>x.t))]]}}
  if(tipo==='descartes'){const rs=impressoes.filter(r=>!r.cancelado&&noPer(r.data)&&pn(r.descartados)>0&&(!f.maquina||r.maquinaId===f.maquina)).sort((a,b)=>a.data.localeCompare(b.data));const tot=sum(impressoes.filter(r=>!r.cancelado&&noPer(r.data)),r=>r.metros);
   const pm={};for(const r of rs){const k=r.motivo||'—';pm[k]=(pm[k]||0)+pn(r.descartados)}
-  return{col:['Data','Código','Máquina','Operador','Motivo','Metros descartados','Custo'],num:[5,6],lin:rs.map(r=>[dBR(r.data),r.codigo||'',mq[r.maquinaId]||'',r.operador||'',r.motivo||'',num(r.descartados),moeda(r.custoDescarte||0)]),tot:['Total',rs.length+' ocorrências','','','',num(sum(rs,r=>r.descartados)),moeda(sum(rs,r=>r.custoDescarte))],
+  return{col:['Data','Código','Máquina','Operador','Motivo','Metros descartados','Custo'],num:[5,6],lin:rs.map(r=>[dBR(r.data),r.codigo||'',mq[r.maquinaId]||'',r.operador||'',r.motivo||'',num(r.descartados),moeda(custoDesc(r))]),tot:['Total',rs.length+' ocorrências','','','',num(sum(rs,r=>r.descartados)),moeda(sum(rs,custoDesc))],
    res:[['Desperdício',pct(tot?sum(rs,r=>r.descartados)/tot*100:0)],...Object.entries(pm).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([k,v])=>[k,num(v)+' m'])]}}
  if(tipo==='consumo'){const lin=[];const tot={};for(const i of insumos){const ms=(i.movimentos||[]).filter(m=>noPer(diaSP(m.em)));if(!ms.length)continue;const ent=sum(ms.filter(m=>m.tipo==='entrada'),m=>m.q),con=-sum(ms.filter(m=>m.tipo==='consumo'||m.tipo==='estorno'),m=>m.q),aj=sum(ms.filter(m=>!['entrada','consumo','estorno'].includes(m.tipo)),m=>m.q);
    lin.push([i.nome,(GRUPOS[i.grupo]||i.grupo),i.unidade,num(ent,3),num(con,3),num(aj,3),num(i.estoque,3),moeda(con*Number(i.custoMedio||0))]);tot.c=(tot.c||0)+con*Number(i.custoMedio||0)}
