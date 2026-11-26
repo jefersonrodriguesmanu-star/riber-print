@@ -4313,11 +4313,36 @@ function Descartes(ctx){const {impressoes,maquinas,insumos,pode}=ctx;const [per,
   <div className="grid g3"><${Bloco} t="Por motivo" d=${ag(r=>r.motivo)}/><${Bloco} t="Por máquina" d=${ag(r=>mq[r.maquinaId]?.nome)}/><${Bloco} t="Por operador" d=${ag(r=>r.operador)}/></div>
   ${ed&&html`<${ed.id&&ed.finalidade!=='descarte'?ImpressaoForm:DescarteForm} ...${ctx} reg=${ed.id?ed:null} onClose=${()=>setEd(null)}/>`}</div>`}
 
+/* PNGs descartados: folhas inteiras (largura do rolo) somam o comprimento; estampas soltas são montadas no rolo. */
+function metrosPngs(arqs,W,esp){const v=arqs.map(a=>({arquivo:a.nome,larg:pn(a.larg),alt:pn(a.alt),qtd:Math.max(0,Math.round(pn(a.qtd)))})).filter(e=>e.larg>0&&e.alt>0&&e.qtd>0);
+ const folha=e=>e.larg>=W*0.85;const fs=v.filter(folha),ps=v.filter(e=>!folha(e));let cm=sum(fs,e=>e.alt*e.qtd),erro='';
+ if(ps.length){const r=montarRolo([{est:ps}],W,esp,'compacto',true);if(r.erro)erro=r.erro;else cm+=r.comp}
+ return{metros:cm>0?Math.ceil(cm-1e-9)/100:0,erro,nf:sum(fs,e=>e.qtd),np:sum(ps,e=>e.qtd)}}
+function PngsDescarte({cfg,toast,arqs,setArqs,travada}){const W=Number(cfg?.portal?.largura||57.899);const [arr,setArr]=useState(false);
+ const add=async files=>{const novos=[];for(const f of files){if(!/\.png$/i.test(f.name)&&f.type!=='image/png')continue;const inf=await infoImagem(f);if(!inf)continue;const dpi=inf.dpi&&inf.dpi>=30?inf.dpi:300;
+   novos.push({id:uid(),nome:f.name,px:inf.w,py:inf.h,dpi,larg:r2(Math.min(inf.w/dpi*2.54,inf.w/dpi*2.54>W&&inf.w/dpi*2.54<W*1.05?W:1e9)),alt:r2(inf.h/dpi*2.54),qtd:1})}
+  const ign=files.length-novos.length;if(novos.length)setArqs(x=>[...x,...novos]);if(ign)toast(ign+' arquivo(s) ignorado(s): só PNG',1)};
+ const escolher=()=>{const i=document.createElement('input');i.type='file';i.accept='image/png';i.multiple=true;i.onchange=()=>add([...i.files]);i.click()};
+ const upd=(id,k,v)=>setArqs(x=>x.map(a=>{if(a.id!==id)return a;const n=pn(v);if(a.px&&k==='larg'&&n>0)return{...a,larg:v,alt:r2(n*a.py/a.px)};if(a.px&&k==='alt'&&n>0)return{...a,alt:v,larg:r2(n*a.px/a.py)};return{...a,[k]:v}}));
+ const drop={onDragOver:e=>{e.preventDefault();setArr(true)},onDragLeave:()=>setArr(false),onDrop:e=>{e.preventDefault();setArr(false);if(!travada)add([...e.dataTransfer.files])}};
+ return html`<div className="card pad" style=${{display:'grid',gap:8,background:'rgba(163,8,154,.04)'}}><div className="row between"><b>PNGs descartados</b>${!travada&&arqs.length>0&&html`<button className="btn sm" onClick=${escolher}>+ PNGs</button>`}</div>
+  ${!arqs.length?html`<div className="sm mut" ...${drop} onClick=${()=>!travada&&escolher()} style=${{border:'2px dashed '+(arr?'var(--acc)':'var(--line)'),borderRadius:12,padding:16,textAlign:'center',cursor:travada?'default':'pointer'}}>Arraste aqui os PNGs que foram jogados fora (ou clique). O sistema mede cada arquivo e soma os metros do descarte. Folhas inteiras somam o comprimento; estampas soltas são montadas no rolo de ${num(W,1)} cm.</div>`
+  :html`<div ...${drop} style=${{outline:arr?'2px dashed var(--acc)':'none',borderRadius:8}}><div className="scroll"><table><thead><tr><th>Arquivo</th><th className="r">Larg. cm</th><th className="r">Alt. cm</th><th className="r">Qtd</th><th></th></tr></thead><tbody>
+   ${arqs.map(a=>html`<tr key=${a.id}><td className="sm" style=${{wordBreak:'break-all'}}>${a.nome}<div className="mut">${a.dpi?a.dpi+' dpi':''}</div></td>
+    <td><input className="in tab" style=${{width:72,textAlign:'right'}} disabled=${travada} value=${String(a.larg).replace('.',',')} onChange=${e=>upd(a.id,'larg',e.target.value)}/></td>
+    <td><input className="in tab" style=${{width:72,textAlign:'right'}} disabled=${travada} value=${String(a.alt).replace('.',',')} onChange=${e=>upd(a.id,'alt',e.target.value)}/></td>
+    <td><input className="in tab" style=${{width:56,textAlign:'right'}} disabled=${travada} value=${a.qtd} onChange=${e=>upd(a.id,'qtd',e.target.value)}/></td>
+    <td>${!travada&&html`<button className="btn sm" onClick=${()=>setArqs(x=>x.filter(y=>y.id!==a.id))}>×</button>`}</td></tr>`)}</tbody></table></div>
+   <div className="sm mut" style=${{marginTop:4}}>Se só um pedaço da folha foi descartado, ajuste a altura (cm).</div></div>`}</div>`}
+
 /* Lançamento avulso de descarte: metros impressos que não puderam ir para o cliente. Abate a matéria-prima pela ficha do perfil. */
 function DescarteForm(ctx){const {db,reg,maquinas,insumos,pedidos,me,pode,toast,onClose}=ctx;const novo=!reg;
  const [f,setF]=useState(()=>({data:diaSP(),maquinaId:(maquinas.find(x=>x.status!=='inativa')||maquinas[0])?.id||'',perfilId:'',operador:ctx.meuNome||'',operadorId:me,motivo:'',obs:'',pedidoId:'',...(reg||{}),pedidoId:reg?.pedidoRef?.pedidoId||'',descartados:String(reg?.descartados??'')}));
  const [s,setS]=useState(false);const [cancel,setCancel]=useState(false);const m=maquinas.find(x=>x.id===f.maquinaId);const perfis=m?.perfis||[];
  useEffect(()=>{if(!perfis.some(p=>p.id===f.perfilId))setF(x=>({...x,perfilId:perfis[0]?.id||''}))},[f.maquinaId]);
+ const [arqs,setArqs]=useState(()=>(reg?.arquivos||[]).map(a=>({...a,id:uid()})));const Wr=Number(ctx.cfg?.portal?.largura||57.899),espR=Math.max(0,Number(ctx.cfg?.portal?.espaco??0.5));
+ const mp=useMemo(()=>metrosPngs(arqs,Wr,espR),[arqs,Wr,espR]);const mudouArq=useRef(false);
+ useEffect(()=>{if(!mudouArq.current){mudouArq.current=true;return}if(arqs.length)setF(x=>({...x,descartados:String(mp.metros).replace('.',',')}))},[mp.metros,arqs.length]);
  const tipo=m?.tipo||'textil';const met=pn(f.descartados);const criadoEm=reg?.criadoEm||new Date().toISOString();
  const des=consumoDesejado({...f,tipo,metros:met,descartados:met,consumoReal:{},criadoEm,cancelado:null},maquinas,insumos);
  const linhas=Object.entries(des).map(([id,q])=>{const i=insumos.find(x=>x.id===id);return{id,i,q,v:q*Number(i?.custoMedio||0)}}).filter(x=>x.i);const total=sum(linhas,x=>x.v);
@@ -4326,7 +4351,7 @@ function DescarteForm(ctx){const {db,reg,maquinas,insumos,pedidos,me,pode,toast,
  const salvar=async(cancelar,motivoC)=>{if(!cancelar&&erro)return toast(erro,1);setS(true);
   try{const id=reg?.id||'im'+uid();const codigo=reg?.codigo||('DESC-'+f.data.replace(/-/g,'').slice(2)+'-'+uid().slice(-3).toUpperCase());const p=pedidos.find(x=>x.id===f.pedidoId);
    const corpo={data:f.data,inicio:'',fim:'',turno:'',maquinaId:f.maquinaId,perfilId:f.perfilId,operador:f.operador,operadorId:f.operadorId,finalidade:'descarte',programados:0,metros:met,descartados:met,aproveitados:0,motivo:f.motivo,obs:f.obs||'',
-    pedidos:[],pedidoRef:p?{pedidoId:p.id,numero:p.numero,clienteNome:p.clienteNome||''}:null,consumoReal:{},codigo,tipo,lancado:reg?.lancado||{},horasLancadas:0,criadoEm,por:reg?.por||me,editadoEm:new Date().toISOString(),
+    pedidos:[],pedidoRef:p?{pedidoId:p.id,numero:p.numero,clienteNome:p.clienteNome||''}:null,arquivos:arqs.map(a=>({nome:a.nome,larg:pn(a.larg),alt:pn(a.alt),qtd:Math.max(0,Math.round(pn(a.qtd))),px:a.px||null,py:a.py||null,dpi:a.dpi||null})),metrosPng:arqs.length?mp.metros:null,consumoReal:{},codigo,tipo,lancado:reg?.lancado||{},horasLancadas:0,criadoEm,por:reg?.por||me,editadoEm:new Date().toISOString(),
     cancelado:cancelar?{em:new Date().toISOString(),por:me,motivo:motivoC}:(reg?.cancelado||null)};
    await db.doc('impressoes/'+id).set(corpo);const r=await aplicarConsumo(db,{...corpo,id},ctx);await db.doc('impressoes/'+id).update(r);
    toast(cancelar?'Descarte cancelado · matéria-prima devolvida ao estoque':novo?'Descarte lançado · matéria-prima abatida do estoque':'Descarte atualizado · estoque ajustado pela diferença');onClose()}
@@ -4336,11 +4361,13 @@ function DescarteForm(ctx){const {db,reg,maquinas,insumos,pedidos,me,pode,toast,
  <fieldset disabled=${!ed} style=${{border:0,padding:0,margin:0}}><div className="grid" style=${{gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:16}}>
   <div style=${{display:'grid',gap:14,alignContent:'start'}}>
    <div className="grid g2"><${F} l="Data"><input type="date" className="in" value=${f.data} onChange=${so('data')}/><//>
-    <${F} l="Metros descartados *"><input className="in tab" inputMode="decimal" autoFocus=${novo} placeholder="ex.: 1,5" value=${f.descartados} onChange=${so('descartados')}/><//>
+    <${F} l="Metros descartados *" hint="digite ou jogue os PNGs abaixo"><input className="in tab" inputMode="decimal" placeholder="ex.: 1,5" value=${f.descartados} onChange=${so('descartados')}/><//>
     <${F} l="Máquina"><select className="in" value=${f.maquinaId} onChange=${so('maquinaId')}>${maquinas.map(x=>html`<option key=${x.id} value=${x.id}>${x.nome} (${x.tipo==='uv'?'UV':'Têxtil'})</option>`)}</select><//>
     <${F} l="Perfil (ficha de consumo) *"><select className="in" value=${f.perfilId} onChange=${so('perfilId')}><option value="">Selecione…</option>${perfis.map(p=>html`<option key=${p.id} value=${p.id}>${p.nome}</option>`)}</select><//>
     <${F} l="Motivo *"><select className="in" value=${f.motivo} onChange=${so('motivo')}><option value="">Selecione…</option>${MOTIVOS.map(x=>html`<option key=${x}>${x}</option>`)}</select><//>
     <${QuemFez} ctx=${ctx} l="Operador" fixo=${reg&&reg.operador&&(reg.operadorId||'')!==me?reg.operador:''} v=${{id:f.operadorId||'',nome:f.operador}} set=${x=>setF(y=>({...y,operadorId:x.id,operador:x.nome}))}/></div>
+   <${PngsDescarte} cfg=${ctx.cfg} toast=${toast} arqs=${arqs} setArqs=${setArqs} travada=${!ed}/>
+   ${arqs.length>0&&html`<div className="sm" style=${{color:mp.erro?'var(--red2)':''}}>${mp.erro||html`PNGs somam <b>${num(mp.metros)} m</b>${mp.nf?' · '+mp.nf+' folha(s)':''}${mp.np?' · '+mp.np+' estampa(s) montadas':''}${Math.abs(mp.metros-met)>0.0001?html` · <a href="#" onClick=${e=>{e.preventDefault();setF(x=>({...x,descartados:String(mp.metros).replace('.',',')}))}}>usar ${num(mp.metros)} m</a>`:''}`}</div>`}
    <${F} l="Pedido relacionado (opcional)"><select className="in" value=${f.pedidoId} onChange=${so('pedidoId')}><option value="">Nenhum</option>${peds.map(p=>html`<option key=${p.id} value=${p.id}>#${p.numero} · ${p.clienteNome||''}</option>`)}</select><//>
    <${F} l="Observações"><textarea className="in" placeholder="O que aconteceu?" value=${f.obs} onChange=${so('obs')}></textarea><//></div>
   <div><div className="card pad" style=${{display:'grid',gap:8}}><h2>Matéria-prima gasta</h2>
