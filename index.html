@@ -2866,7 +2866,7 @@ function App(){
   if(e.altKey&&e.code==='KeyN'&&!['INPUT','TEXTAREA','SELECT'].includes(tg)&&pode('criar')){e.preventDefault();setForm({t:'pedido'})}};addEventListener('keydown',k);return()=>removeEventListener('keydown',k)},[pode]);
  if(db===undefined)return html`<div className="empty" style=${{minHeight:'60vh',display:'grid',placeItems:'center'}}>Conectando ao banco de dados…</div>`;
  if(db===null)return html`<div className="empty" style=${{minHeight:'60vh',display:'grid',placeItems:'center'}}><div><div className="b">Banco de dados indisponível nesta visualização.</div><div className="sm">Abra o link do sistema com sua conta Claude conectada.</div></div></div>`;
- const NAV=[['Visão geral',[['dashboard','Dashboard','dash'],['monitor','Vendas ao vivo','trend']]],['Comercial',[['pedidos','Pedidos','ped'],['expedicao','Expedição'+((n=>n?' ('+n+')':'')(ped.rows.filter(p=>!p.cancelado&&p.origem!=='scalle'&&p.statusProd==='pronto'&&!(p.entrega==='retirada'&&p.interno)&&!(['correios','transportadora','mercado_livre'].includes(p.entrega)&&(p.postadoEm||p.etapaId==='enviado'))).length)),'box'],['pedidoartes','Pedido com artes','up'],['cotacoes','Cotações'+(cot.rows.filter(x=>x.status==='aprovada').length?' ('+cot.rows.filter(x=>x.status==='aprovada').length+')':''),'ped'],['online','Pedidos online'+(sol.rows.filter(x=>x.status==='nova').length?' ('+sol.rows.filter(x=>x.status==='nova').length+')':''),'dl'],['kanban','Kanban','kb'],['clientes','Clientes','cli'],['produtos','Produtos e serviços','prd'],['metas','Metas','trend']]],['Financeiro',[...(pode('fat')?[['financeiro','Contas a pagar e receber'+((n=>n?' ('+n+')':'')(lanc.rows.filter(l=>!l.cancelado&&(l.vencimento||'')<diaSP()&&saldoLanc(l).saldo>0.009).length)),'cus']]:[]),['fechamentos','Fechamentos','fch'],['custos','Custos e simulador','cus'],['relatorios','Relatórios','print']]],['Marketing',[['precos','Preços do site','cus'],['metricas','Métricas do site','trend'],['disparos','Enviar no WhatsApp','cli']]],['Produção',[['filamaq','Fila por máquina','print'],['impressao','Central de impressão','print'],['maquinas','Máquinas','cpu'],['entregas','Entregas'+(ped.rows.filter(p=>p.entrega==='entrega_local'&&!p.cancelado&&p.statusProd==='pronto').length?' ('+ped.rows.filter(p=>p.entrega==='entrega_local'&&!p.cancelado&&p.statusProd==='pronto').length+')':''),'box'],['descartes','Descartes','trash'],['estampas','Estampas por SKU','box']]],['Estoque',[['insumos','Matéria-prima','box'],['compras','Compras e fornecedores','ped']]],['Administração',[['colaboradores','Colaboradores','cli'],['equipe','Usuários e permissões','eq'],['config','Configurações','cfg']]]];
+ const NAV=[['Visão geral',[['dashboard','Dashboard','dash'],['monitor','Vendas ao vivo','trend']]],['Comercial',[['pedidos','Pedidos','ped'],['expedicao','Expedição'+((n=>n?' ('+n+')':'')(ped.rows.filter(p=>!p.cancelado&&p.origem!=='scalle'&&p.statusProd==='pronto'&&!(p.entrega==='retirada'&&p.interno)&&!(['correios','transportadora','mercado_livre'].includes(p.entrega)&&(p.postadoEm||p.etapaId==='enviado'))).length)),'box'],['pedidoartes','Pedido com artes','up'],['cotacoes','Cotações'+(cot.rows.filter(x=>x.status==='aprovada').length?' ('+cot.rows.filter(x=>x.status==='aprovada').length+')':''),'ped'],['online','Pedidos online'+(sol.rows.filter(x=>x.status==='nova').length?' ('+sol.rows.filter(x=>x.status==='nova').length+')':''),'dl'],['kanban','Kanban','kb'],['clientes','Clientes','cli'],['produtos','Produtos e serviços','prd'],['metas','Metas','trend']]],['Financeiro',[...(pode('fat')?[['financeiro','Contas a pagar e receber'+((n=>n?' ('+n+')':'')(lanc.rows.filter(l=>!l.cancelado&&(l.vencimento||'')<diaSP()&&saldoLanc(l).saldo>0.009).length)),'cus']]:[]),['fechamentos','Fechamentos','fch'],['custos','Custos e simulador','cus'],['relatorios','Relatórios','print']]],['Marketing',[['precos','Preços do site','cus'],['metricas','Métricas do site','trend'],['disparos','Enviar no WhatsApp','cli']]],['Produção',[['filamaq','Fila por máquina','print'],['impressao','Central de impressão','print'],['maquinas','Máquinas','cpu'],['entregas','Entregas'+(ped.rows.filter(p=>p.entrega==='entrega_local'&&!p.cancelado&&p.statusProd==='pronto').length?' ('+ped.rows.filter(p=>p.entrega==='entrega_local'&&!p.cancelado&&p.statusProd==='pronto').length+')':''),'box'],['descartes','Descartes','trash'],['reimpressoes','Reimpressões'+((n=>n?' ('+n+')':'')(ped.rows.filter(p=>!p.cancelado&&p.reimpressao&&p.reimpressao.status==='pendente').length)),'print'],['estampas','Estampas por SKU','box']]],['Estoque',[['insumos','Matéria-prima','box'],['compras','Compras e fornecedores','ped']]],['Administração',[['colaboradores','Colaboradores','cli'],['equipe','Usuários e permissões','eq'],['config','Configurações','cfg']]]];
  const lento=[cli,prd,ped].some(c=>c.err==='lento');
  let page;
  if(!papel)page=html`<div className="card pad" style=${{maxWidth:520,margin:'60px auto',textAlign:'center'}}><h2>Acesso aguardando liberação</h2><p className="mut">Você já está registrado. Peça ao administrador para definir seu papel em <b>Equipe e permissões</b>.</p></div>`;
@@ -2881,6 +2881,7 @@ function App(){
  else if(view==='filamaq')page=html`<${FilaMaquinas} ...${ctx}/>`;
  else if(view==='maquinas')page=html`<${Maquinas} ...${ctx}/>`;
  else if(view==='descartes')page=html`<${Descartes} ...${ctx}/>`;
+ else if(view==='reimpressoes')page=html`<${Reimpressoes} ...${ctx}/>`;
  else if(view==='insumos')page=html`<${Insumos} ...${ctx}/>`;
  else if(view==='fechamentos')page=html`<${Fechamentos} ...${ctx}/>`;
  else if(view==='online')page=html`<${PedidosOnline} ...${ctx}/>`;
@@ -3479,8 +3480,7 @@ function PedidoDetalhe(ctxD){const {db,id,pedidos,clientes,produtos,cfg,me,pode,
   ${dlg==='pix'&&html`<${PixDlg} cfg=${cfg} valor=${p.saldo} txid=${'PED'+p.numero} titulo=${'PIX do pedido #'+p.numero} onClose=${()=>setDlg(null)}/>`}
   ${dlg==='pag'&&html`<${PagamentoDlg} p=${p} onClose=${()=>setDlg(null)} onOk=${x=>{salvar({...p,pagamentos:[...(p.pagamentos||[]),{...x,id:uid(),por:me,registradoEm:new Date().toISOString()}],historico:[...p.historico,{em:new Date().toISOString(),por:me,tipo:'pagamento',obs:'Pagamento de '+moeda(x.valor)+' ('+FORMAS[x.forma]+')'}]},'Pagamento registrado');setDlg(null)}}/>`}
   ${dlg==='unificar'&&html`<${UnificarDlg} ...${ctxD} p=${p} onClose=${()=>setDlg(null)}/>`}
-  ${dlg==='cancel'&&html`<${MotivoDlg} titulo=${'Cancelar pedido #'+p.numero} aviso=${p.pago>0?'Este pedido tem '+moeda(p.pago)+' recebidos. Estorne os pagamentos antes de cancelar.':'As reservas de estoque serão liberadas.'} bloqueado=${p.pago>0} onClose=${()=>setDlg(null)} opcao=${Object.keys(p.consumoLancado||{}).length?{label:'Devolver a matéria-prima ao estoque',desc:'Marque se o pedido não chegou a ser impresso. O filme, a tinta e o pó abatidos voltam para o estoque.',padrao:true}:null}
-    onOk=${(m,dev)=>{const ce=cfg.etapas.find(e=>e.cancela);salvar({...p,...(dev?{estornoConsumo:{em:new Date().toISOString(),por:me}}:{}),cancelado:{em:new Date().toISOString(),por:me,motivo:m},etapaId:ce?ce.id:p.etapaId,etapaDesde:new Date().toISOString(),historico:[...p.historico,{em:new Date().toISOString(),por:me,tipo:'cancelamento',obs:'Cancelado: '+m}]},'Pedido cancelado');setDlg(null)}}/>`}
+  ${dlg==='cancel'&&html`<${CancelarPedidoDlg} ctx=${ctxD} p=${p} onClose=${()=>setDlg(null)} onOk=${(m,dev)=>{const ce=cfg.etapas.find(e=>e.cancela);salvar({...p,...(dev?{estornoConsumo:{em:new Date().toISOString(),por:me}}:{}),cancelado:{em:new Date().toISOString(),por:me,motivo:m},etapaId:ce?ce.id:p.etapaId,etapaDesde:new Date().toISOString(),historico:[...p.historico,{em:new Date().toISOString(),por:me,tipo:'cancelamento',obs:'Cancelado: '+m}]},'Pedido cancelado');setDlg(null)}}/>`}
   ${dlg&&dlg.estorno&&html`<${MotivoDlg} titulo="Estornar pagamento" aviso="O valor deixa de contar como recebido. O registro fica no histórico." onClose=${()=>setDlg(null)}
     onOk=${m=>{salvar({...p,pagamentos:p.pagamentos.map(x=>x.id===dlg.estorno?{...x,estornado:true,motivoEstorno:m,estornadoEm:new Date().toISOString(),estornadoPor:me}:x),historico:[...p.historico,{em:new Date().toISOString(),por:me,tipo:'estorno',obs:'Estorno: '+m}]},'Pagamento estornado');setDlg(null)}}/>`}
  <//>`}
@@ -3490,6 +3490,96 @@ function PagamentoDlg({p,onClose,onOk}){const [v,setV]=useState(String(p.saldo))
   <${F} l="Valor (R$)"><input className="in tab" autoFocus inputMode="decimal" value=${v} onChange=${e=>setV(e.target.value)}/><//><${F} l="Data"><input type="date" className="in" value=${d} onChange=${e=>setD(e.target.value)}/><//>
   <${F} l="Forma"><select className="in" value=${f} onChange=${e=>setF(e.target.value)}>${Object.entries(FORMAS).map(([k,x])=>html`<option key=${k} value=${k}>${x}</option>`)}</select><//><${F} l="Observação"><input className="in" value=${o} onChange=${e=>setO(e.target.value)}/><//></div>
   <div className="row between" style=${{marginTop:14}}><span className="sm" style=${{color:'var(--red2)'}}>${erro||''}</span><button className="btn p" disabled=${!!erro} onClick=${()=>onOk({valor:r2(val),forma:f,data:d,obs:o})}>Confirmar</button></div><//>`}
+/* ---------------- cancelamento com motivo e reimpressão ---------------- */
+const MOTIVOS_CANC=[['cliente','Cliente cancelou / desistiu'],['duplicado','Pedido duplicado'],['erro_pedido','Erro no pedido (valor, cadastro ou arquivo do cliente)'],['reimprimir','Impressão com erro: vai reimprimir'],['outro','Outro motivo']];
+/* Ficha do perfil × metros: quanto de cada matéria-prima e quanto custa (custo médio atual). */
+function consumoMetros(maquinas,insumos,maquinaId,perfilId,metros){const m=maquinas.find(x=>x.id===maquinaId);const tipo=m?.tipo||'textil';
+ const q=consumoDesejado({maquinaId,perfilId,tipo,metros,descartados:metros,baixaTotal:true,criadoEm:new Date().toISOString(),consumoReal:{}},maquinas,insumos);
+ return{tipo,q,custo:r2(sum(Object.entries(q),([id,v])=>v*Number((insumos.find(i=>i.id===id)||{}).custoMedio||0)))}}
+function MaqPerfil({maquinas,v,set}){const m=maquinas.find(x=>x.id===v.maquinaId);const pf=m?.perfis||[];
+ useEffect(()=>{if(!pf.some(x=>x.id===v.perfilId))set({...v,perfilId:pf[0]?.id||''})},[v.maquinaId]);
+ return html`<${F} l="Máquina"><select className="in" value=${v.maquinaId} onChange=${e=>set({...v,maquinaId:e.target.value})}>${maquinas.map(x=>html`<option key=${x.id} value=${x.id}>${x.nome} (${x.tipo==='uv'?'UV':'Têxtil'})</option>`)}</select><//>
+  <${F} l="Perfil (ficha de consumo)"><select className="in" value=${v.perfilId} onChange=${e=>set({...v,perfilId:e.target.value})}><option value="">Selecione…</option>${pf.map(x=>html`<option key=${x.id} value=${x.id}>${x.nome}</option>`)}</select><//>`}
+function CancelarPedidoDlg({ctx,p,onClose,onOk}){const {db,maquinas=[],insumos=[],me,pode,toast,cfg}=ctx;
+ const [mot,setMot]=useState('');const [det,setDet]=useState('');const consumido=Object.keys(p.consumoLancado||{}).length>0;const [dev,setDev]=useState(!impressoP(p));
+ const mq0=(p.maquinaId&&maquinas.find(x=>x.id===p.maquinaId))||maquinas.find(x=>x.status!=='inativa')||maquinas[0];
+ const [mp,setMp]=useState({maquinaId:mq0?.id||'',perfilId:(p.perfilId&&(mq0?.perfis||[]).some(x=>x.id===p.perfilId))?p.perfilId:''});
+ const [met,setMet]=useState(String(metrosTot(p)||'').replace('.',','));const [motD,setMotD]=useState('Erro de impressão');const [s,setS]=useState(false);
+ const reimp=mot==='reimprimir';const X=pn(met);const C=consumoMetros(maquinas,insumos,mp.maquinaId,mp.perfilId,X);const vc=pode('custos');
+ const bloq=!reimp&&p.pago>0;
+ const erro=!mot?'Escolha o motivo':mot==='outro'&&!det.trim()?'Escreva o motivo':reimp&&!(X>0)?'Informe os metros impressos com erro':reimp&&!mp.perfilId?'Escolha a máquina e o perfil':reimp&&p.reimpressao&&p.reimpressao.status==='pendente'?'Este pedido já está aguardando reimpressão':null;
+ const txt=()=>[(MOTIVOS_CANC.find(x=>x[0]===mot)||[])[1],det.trim()].filter(Boolean).join(' · ');
+ const confirmar=async()=>{if(erro)return toast(erro,1);if(!reimp)return onOk(txt(),consumido&&dev);setS(true);
+  try{const ag=new Date().toISOString();const id='im'+uid();const codigo='DESC-'+diaSP().replace(/-/g,'').slice(2)+'-'+uid().slice(-3).toUpperCase();const semBaixa=consumido;
+   const corpo={data:diaSP(),inicio:'',fim:'',turno:'',maquinaId:mp.maquinaId,perfilId:mp.perfilId,operador:ctx.meuNome||'',operadorId:me,finalidade:'descarte',programados:0,metros:X,descartados:X,aproveitados:0,motivo:motD,
+    obs:'Pedido #'+p.numero+' impresso com erro'+(det.trim()?': '+det.trim():''),pedidos:[],pedidoRef:{pedidoId:p.id,numero:p.numero,clienteNome:p.clienteNome||''},origem:'cancelamento',consumoReal:{},codigo,tipo:C.tipo,lancado:{},horasLancadas:0,criadoEm:ag,por:me,editadoEm:ag,cancelado:null,
+    ...(semBaixa?{semBaixa:true,consumoInfo:C.q,custoMateriais:C.custo,custoDescarte:C.custo}:{})};
+   await db.doc('impressoes/'+id).set(corpo);if(!semBaixa){const r=await aplicarConsumo(db,{...corpo,id},ctx);await db.doc('impressoes/'+id).update(r)}
+   const {id:_x,...c}=normalizar({...p,reimpressao:{status:'pendente',em:ag,por:me,metros:X,motivo:motD,obs:det.trim(),descarteId:id,descarteCodigo:codigo,maquinaId:mp.maquinaId,perfilId:mp.perfilId},
+    historico:[...(p.historico||[]),{em:ag,por:me,tipo:'producao',obs:'Impressão com erro ('+motD+'): '+num(X)+' m foram para o descarte '+codigo+'. Aguardando reimpressão.'}]},me);await db.doc('pedidos/'+p.id).set(c);
+   toast(num(X)+' m foram para Descartes · pedido #'+p.numero+' está em Reimpressões');onClose()}catch(e){toast('Erro: '+(e.message||e.code),1)}finally{setS(false)}};
+ return html`<${Modal} title=${'Cancelar pedido #'+p.numero} sub="Escolha o motivo. Se foi impressão com erro, o pedido não é cancelado: vai para o descarte e depois para a reimpressão." onClose=${onClose}>
+  <div style=${{display:'grid',gap:8}}>${MOTIVOS_CANC.map(([k,l])=>html`<label key=${k} className="row" style=${{gap:10,padding:'10px 12px',border:'1px solid '+(mot===k?'var(--acc)':'var(--line)'),borderRadius:10,cursor:'pointer',background:mot===k?'rgba(163,8,154,.06)':''}}>
+   <input type="radio" name="motc" checked=${mot===k} onChange=${()=>setMot(k)}/><span><b>${l}</b>${k==='reimprimir'?html`<div className="sm mut">Os metros vão para Descartes e o pedido vai para a aba Reimpressões</div>`:''}</span></label>`)}</div>
+  ${mot&&!reimp&&html`<div style=${{display:'grid',gap:10,marginTop:12}}>
+   ${bloq&&html`<div className="sm" style=${{color:'var(--red2)'}}>Este pedido tem ${moeda(p.pago)} recebidos. Estorne os pagamentos antes de cancelar.</div>`}
+   <${F} l=${mot==='outro'?'Qual o motivo? (obrigatório)':'Detalhes (opcional)'}><textarea className="in" value=${det} disabled=${bloq} onChange=${e=>setDet(e.target.value)}></textarea><//>
+   ${consumido&&html`<label className="row sm" style=${{gap:8,alignItems:'flex-start'}}><input type="checkbox" checked=${dev} disabled=${bloq} onChange=${e=>setDev(e.target.checked)} style=${{marginTop:3}}/><span><b>Devolver a matéria-prima ao estoque</b><div className="mut">Marque só se o pedido não chegou a ser impresso. Se já foi impresso, deixe desmarcado: o material foi gasto.</div></span></label>`}
+   <div className="sm mut">As reservas de estoque serão liberadas.</div></div>`}
+  ${reimp&&html`<div style=${{display:'grid',gap:10,marginTop:12}}>
+   <div className="grid g2"><${F} l="Metros impressos com erro"><input className="in tab" inputMode="decimal" value=${met} onChange=${e=>setMet(e.target.value)}/><//>
+    <${F} l="O que deu errado"><select className="in" value=${motD} onChange=${e=>setMotD(e.target.value)}>${MOTIVOS.map(x=>html`<option key=${x}>${x}</option>`)}</select><//>
+    <${MaqPerfil} maquinas=${maquinas} v=${mp} set=${setMp}/></div>
+   <${F} l="Detalhes (opcional)"><textarea className="in" value=${det} onChange=${e=>setDet(e.target.value)}></textarea><//>
+   <div className="card pad sm" style=${{display:'grid',gap:4}}><b>O que vai acontecer</b>
+    <div>1. ${num(X)} m entram em Descartes${vc&&C.custo?' · custo de '+moeda(C.custo):''}. ${consumido?'A matéria-prima já saiu do estoque com o pedido, então fica só registrada como descarte.':'A matéria-prima é abatida do estoque agora.'}</div>
+    <div>2. O pedido continua ativo para o cliente e aparece na aba <b>Reimpressões</b>.</div>
+    <div>3. Ao clicar em Reimprimir, o estoque é abatido de novo e o pedido volta para a fila de impressão, contando no tempo da fila.</div></div></div>`}
+  <div className="row" style=${{justifyContent:'flex-end',marginTop:12,gap:8}}>${erro&&mot&&html`<span className="sm" style=${{color:'var(--red2)',marginRight:'auto'}}>${erro}</span>`}<button className="btn" onClick=${onClose}>Voltar</button>
+   <button className="btn p" disabled=${s||!!erro||bloq} onClick=${confirmar}>${s?'Lançando…':reimp?'Mandar para descarte e reimpressão':'Cancelar pedido'}</button></div><//>`}
+
+/* Aba Reimpressões: pedidos impressos com erro. Reimprimir abate a matéria-prima de novo e devolve o pedido para a fila. */
+function Reimpressoes(ctx){const {db,pedidos,maquinas=[],insumos=[],me,pode,toast,cfg,abrir}=ctx;const [ver,setVer]=useState('pendente');const [dlg,setDlg]=useState(null);
+ const pend=pedidos.filter(p=>!p.cancelado&&p.reimpressao&&p.reimpressao.status==='pendente').sort((a,b)=>(a.reimpressao.em||'').localeCompare(b.reimpressao.em||''));
+ const feitas=pedidos.flatMap(p=>(p.reimpressoes||[]).map(r=>({...r,p}))).sort((a,b)=>(b.enviadoEm||'').localeCompare(a.enviadoEm||'')).slice(0,200);
+ const vc=pode('custos');const totM=sum(pend,p=>p.reimpressao.metros);
+ return html`<div><div className="row between" style=${{marginBottom:14}}><div><h1>Reimpressões</h1><div className="sub">Pedidos que foram impressos com erro. Os metros errados já estão em Descartes. Reimprimir abate a matéria-prima de novo e devolve o pedido para a fila.</div></div></div>
+  <div className="grid g3" style=${{marginBottom:12}}><div className="card kpi hero"><div className="t">Aguardando reimpressão</div><div className="v tab">${pend.length}</div><div className="sm mut">${num(totM)} m</div></div>
+   <div className="card kpi"><div className="t">Reimpressos (últimos)</div><div className="v tab">${feitas.length}</div><div className="sm mut">${num(sum(feitas,r=>r.metros))} m</div></div></div>
+  <div className="tabs" style=${{marginBottom:10}}><button className=${ver==='pendente'?'on':''} onClick=${()=>setVer('pendente')}>Aguardando (${pend.length})</button><button className=${ver==='feitas'?'on':''} onClick=${()=>setVer('feitas')}>Já reimpressos</button></div>
+  <div className="card">${ver==='pendente'?(pend.length===0?html`<${Empty} t="Nenhum pedido aguardando reimpressão" s="Quando um pedido sair errado, use Cancelar pedido → Impressão com erro."/>`:html`<div className="scroll"><table><thead><tr><th>Pedido</th><th>Cliente</th><th>Motivo</th><th className="r">Metros</th><th className="hide-s">Desde</th><th></th></tr></thead><tbody>
+   ${pend.map(p=>html`<tr key=${p.id}><td><a href="#" onClick=${e=>{e.preventDefault();abrir&&abrir(p.id)}}><b>#${p.numero}</b></a><div className="sm mut">${p.reimpressao.descarteCodigo||''}</div></td><td>${p.clienteNome||'—'}</td><td className="sm">${p.reimpressao.motivo||'—'}${p.reimpressao.obs?html`<div className="mut">${p.reimpressao.obs}</div>`:''}</td>
+    <td className="r tab b">${num(p.reimpressao.metros)} m</td><td className="hide-s sm">${dhBR(p.reimpressao.em)}</td>
+    <td className="r">${pode('imprimir')&&html`<button className="btn sm p" onClick=${()=>setDlg(p)}><${Ic} n="print" s=${13}/>Reimprimir</button>`}</td></tr>`)}</tbody></table></div>`)
+   :(feitas.length===0?html`<${Empty} t="Nenhuma reimpressão ainda"/>`:html`<div className="scroll"><table><thead><tr><th>Pedido</th><th>Cliente</th><th>Motivo</th><th className="r">Metros</th>${vc&&html`<th className="r">Custo</th>`}<th className="hide-s">Enviado para a fila</th></tr></thead><tbody>
+   ${feitas.map((r,k)=>html`<tr key=${k}><td><a href="#" onClick=${e=>{e.preventDefault();abrir&&abrir(r.p.id)}}><b>#${r.p.numero}</b></a></td><td>${r.p.clienteNome||'—'}</td><td className="sm">${r.motivo||'—'}</td><td className="r tab">${num(r.metros)} m</td>${vc&&html`<td className="r tab">${moeda(r.custo||0)}</td>`}<td className="hide-s sm">${dhBR(r.enviadoEm)}</td></tr>`)}</tbody></table></div>`)}</div>
+  ${dlg&&html`<${ReimprimirDlg} ctx=${ctx} p=${dlg} onClose=${()=>setDlg(null)}/>`}</div>`}
+function ReimprimirDlg({ctx,p,onClose}){const {db,maquinas=[],insumos=[],me,pode,toast,cfg}=ctx;const R=p.reimpressao||{};
+ const [mp,setMp]=useState({maquinaId:R.maquinaId||maquinas[0]?.id||'',perfilId:R.perfilId||''});const [met,setMet]=useState(String(R.metros||'').replace('.',','));const [s,setS]=useState(false);
+ const X=pn(met);const C=consumoMetros(maquinas,insumos,mp.maquinaId,mp.perfilId,X);const vc=pode('custos');const tot=metrosTot(p);
+ const erro=!(X>0)?'Informe os metros':X>tot+0.001?'Maior que os metros do pedido ('+num(tot)+' m)':!mp.perfilId?'Escolha o perfil':null;
+ const ir=async()=>{if(erro)return toast(erro,1);setS(true);
+  try{const ag=new Date().toISOString();const m=maquinas.find(x=>x.id===mp.maquinaId);const id='im'+uid();const codigo='REIMP-'+diaSP().replace(/-/g,'').slice(2)+'-'+uid().slice(-3).toUpperCase();
+   const corpo={data:diaSP(),inicio:'',fim:'',turno:'',maquinaId:mp.maquinaId,perfilId:mp.perfilId,operador:ctx.meuNome||'',operadorId:me,finalidade:'reimpressao',baixaTotal:true,programados:X,metros:X,descartados:0,aproveitados:X,motivo:'',
+    obs:'Reimpressão do pedido #'+p.numero+(R.descarteCodigo?' (descarte '+R.descarteCodigo+')':''),pedidos:[{pedidoId:p.id,numero:p.numero,metros:X}],consumoReal:{},codigo,tipo:m?.tipo||'textil',lancado:{},horasLancadas:0,criadoEm:ag,por:me,editadoEm:ag,cancelado:null};
+   await db.doc('impressoes/'+id).set(corpo);const r=await aplicarConsumo(db,{...corpo,id},ctx);await db.doc('impressoes/'+id).update(r);
+   const sn=await db.doc('pedidos/'+p.id).get();const P=sn.exists?{...sn.data(),id:p.id}:p;
+   const ord={...(P.ordens||{})};for(const k of SET_IMP)if(ord[k])ord[k]='pendente';if(!SET_IMP.some(k=>ord[k]))ord[(m?.tipo==='uv')?'dtf_uv':'dtf_textil']='pendente';
+   const ef=(cfg.etapas||[]).find(e=>e.id==='fila');const hist=[...(P.impressoHist||[]),...(P.impressoEm?[{em:P.impressoEm,mt:P.impressoMt!=null&&P.impressoMt>0?P.impressoMt:metrosTot(P),maquinaId:P.maquinaId||null,maquinaNome:P.maquinaNome||null,imprimindoEm:P.imprimindoEm||null,comErro:true}]:[])];
+   const np={...P,impressoEm:null,impressoMt:null,imprimindoEm:null,pausadoEm:null,partes:null,tempoImpMs:0,impressoHist:hist,mtParcial:r3(Math.max(0,metrosTot(P)-X)),
+    itens:(P.itens||[]).map(i=>i.impressoEm?{...i,impressoEm:null}:i),ordens:ord,statusProd:'em_producao',...(ef?{etapaId:ef.id,etapaDesde:ag}:{}),maquinaId:mp.maquinaId,maquinaNome:m?.nome||P.maquinaNome||null,
+    reimpressao:{...R,status:'na_fila',enviadoEm:ag},reimpressoes:[...(P.reimpressoes||[]),{em:R.em||ag,enviadoEm:ag,por:me,metros:X,motivo:R.motivo||'',descarteCodigo:R.descarteCodigo||'',impressaoCodigo:codigo,custo:r.custoMateriais||C.custo}],
+    historico:[...(P.historico||[]),{em:ag,por:me,tipo:'producao',obs:'Reimpressão: '+num(X)+' m voltaram para a fila de impressão ('+codigo+', matéria-prima abatida)'}]};
+   const {id:_x,...c}=normalizar(np,me);await db.doc('pedidos/'+p.id).set(c);toast('Pedido #'+p.numero+' voltou para a fila · '+num(X)+' m · estoque abatido');onClose()}
+  catch(e){toast('Erro: '+(e.message||e.code),1)}finally{setS(false)}};
+ return html`<${Modal} title=${'Reimprimir pedido #'+p.numero} sub=${(p.clienteNome||'')+' · '+(R.motivo||'impressão com erro')} onClose=${onClose}>
+  <div className="grid g2"><${F} l="Metros para reimprimir"><input className="in tab" inputMode="decimal" value=${met} onChange=${e=>setMet(e.target.value)}/><//><div></div><${MaqPerfil} maquinas=${maquinas} v=${mp} set=${setMp}/></div>
+  <div className="card pad sm" style=${{display:'grid',gap:6,marginTop:12}}><b>Matéria-prima que sai do estoque agora</b>
+   ${Object.keys(C.q).length===0?html`<div className="mut">Escolha um perfil com ficha de consumo.</div>`:Object.entries(C.q).map(([id,q])=>{const i=insumos.find(x=>x.id===id);return html`<div key=${id} className="row between"><span>${i?.nome||id}</span><span className="tab">${num(q,3)} ${i?.unidade||''}${vc?' · '+moeda(q*Number(i?.custoMedio||0)):''}</span></div>`})}
+   ${vc&&C.custo>0&&html`<div className="row between"><b>Total</b><b className="tab">${moeda(C.custo)}</b></div>`}
+   <div className="mut">O pedido volta para a fila de impressão com ${num(X)} m e entra no tempo da fila.</div></div>
+  <div className="row" style=${{justifyContent:'flex-end',marginTop:12,gap:8}}>${erro&&html`<span className="sm" style=${{color:'var(--red2)',marginRight:'auto'}}>${erro}</span>`}<button className="btn" onClick=${onClose}>Voltar</button><button className="btn p" disabled=${s||!!erro} onClick=${ir}>${s?'Enviando…':'Reimprimir e abater estoque'}</button></div><//>`}
+
 function MotivoDlg({titulo,aviso,onClose,onOk,bloqueado,opcao}){const [m,setM]=useState('');const [op,setOp]=useState(opcao?!!opcao.padrao:false);return html`<${Modal} title=${titulo} sub=${aviso} onClose=${onClose}>
  <${F} l="Motivo (obrigatório)"><textarea className="in" autoFocus value=${m} disabled=${bloqueado} onChange=${e=>setM(e.target.value)}></textarea><//>
  ${opcao&&html`<label className="row sm" style=${{gap:8,marginTop:10,alignItems:'flex-start'}}><input type="checkbox" checked=${op} disabled=${bloqueado} onChange=${e=>setOp(e.target.checked)} style=${{marginTop:3}}/><span><b>${opcao.label}</b>${opcao.desc?html`<div className="mut">${opcao.desc}</div>`:''}</span></label>`}
@@ -3991,9 +4081,9 @@ let BAIXA=BAIXA_PADRAO;
 const porPedidoReg=r=>!!(BAIXA&&BAIXA.ativo&&(r.criadoEm||'')>=BAIXA.desde);
 const custoDesc=r=>r.cancelado?0:porPedidoReg(r)?Number(r.custoMateriais||0):Number(r.custoDescarte||0);
 /* Quantidade de cada matéria-prima consumida pelos metros descartados de um registro. */
-const qtdDesc=r=>{if(r.cancelado||!(pn(r.descartados)>0))return{};const l=r.lancado||{};if(porPedidoReg(r))return l;const k=pn(r.metros)>0?pn(r.descartados)/pn(r.metros):0;return Object.fromEntries(Object.entries(l).map(([i,q])=>[i,r3(Number(q)*k)]))};
-function consumoDesejado(reg,maquinas,insumos){if(reg.cancelado)return{};const m=maquinas.find(x=>x.id===reg.maquinaId);const pf=(m&&m.perfis||[]).find(p=>p.id===reg.perfilId);const out={};
- const porPedido=BAIXA&&BAIXA.ativo&&reg.criadoEm>=BAIXA.desde;const base=porPedido?pn(reg.descartados):pn(reg.metros);
+const qtdDesc=r=>{if(r.cancelado||!(pn(r.descartados)>0))return{};if(r.semBaixa)return r.consumoInfo||{};const l=r.lancado||{};if(porPedidoReg(r))return l;const k=pn(r.metros)>0?pn(r.descartados)/pn(r.metros):0;return Object.fromEntries(Object.entries(l).map(([i,q])=>[i,r3(Number(q)*k)]))};
+function consumoDesejado(reg,maquinas,insumos){if(reg.cancelado||reg.semBaixa)return{};const m=maquinas.find(x=>x.id===reg.maquinaId);const pf=(m&&m.perfis||[]).find(p=>p.id===reg.perfilId);const out={};
+ const porPedido=BAIXA&&BAIXA.ativo&&reg.criadoEm>=BAIXA.desde&&!reg.baixaTotal;const base=porPedido?pn(reg.descartados):pn(reg.metros);
  for(const f of (pf&&pf.ficha)||[]){const ins=insumos.find(i=>i.id===f.insumoId);if(!ins||!grupoOk(reg.tipo,ins.grupo))continue;const q=r3(pn(f.qtd)*base);if(q)out[f.insumoId]=q}
  if(!porPedido)for(const [k,v] of Object.entries(reg.consumoReal||{}))if(v!==''&&v!=null){const ins=insumos.find(i=>i.id===k);if(ins&&grupoOk(reg.tipo,ins.grupo))out[k]=r3(pn(v))}
  return out}
@@ -4345,7 +4435,7 @@ function DescarteForm(ctx){const {db,reg,maquinas,insumos,pedidos,me,pode,toast,
  const mp=useMemo(()=>metrosPngs(arqs,Wr,espR),[arqs,Wr,espR]);const mudouArq=useRef(false);
  useEffect(()=>{if(!mudouArq.current){mudouArq.current=true;return}if(arqs.length)setF(x=>({...x,descartados:String(mp.metros).replace('.',',')}))},[mp.metros,arqs.length]);
  const tipo=m?.tipo||'textil';const met=pn(f.descartados);const criadoEm=reg?.criadoEm||new Date().toISOString();
- const des=consumoDesejado({...f,tipo,metros:met,descartados:met,consumoReal:{},criadoEm,cancelado:null},maquinas,insumos);
+ const des=consumoDesejado({...f,tipo,metros:met,descartados:met,consumoReal:{},criadoEm,cancelado:null,semBaixa:false},maquinas,insumos);const semB=!!reg?.semBaixa;
  const linhas=Object.entries(des).map(([id,q])=>{const i=insumos.find(x=>x.id===id);return{id,i,q,v:q*Number(i?.custoMedio||0)}}).filter(x=>x.i);const total=sum(linhas,x=>x.v);
  const vc=pode('custos');const peds=pedidos.filter(p=>!p.cancelado||p.id===f.pedidoId).slice().sort((a,b)=>Number(b.numero||0)-Number(a.numero||0)).slice(0,300);
  const erro=!m?'Selecione a máquina':!f.perfilId?'Selecione o perfil (é a ficha que diz quanto de cada matéria-prima vai por metro)':!(met>0)?'Informe os metros descartados':!f.motivo?'Informe o motivo do descarte':null;
@@ -4354,8 +4444,9 @@ function DescarteForm(ctx){const {db,reg,maquinas,insumos,pedidos,me,pode,toast,
    const corpo={data:f.data,inicio:'',fim:'',turno:'',maquinaId:f.maquinaId,perfilId:f.perfilId,operador:f.operador,operadorId:f.operadorId,finalidade:'descarte',programados:0,metros:met,descartados:met,aproveitados:0,motivo:f.motivo,obs:f.obs||'',
     pedidos:[],pedidoRef:p?{pedidoId:p.id,numero:p.numero,clienteNome:p.clienteNome||''}:null,arquivos:arqs.map(a=>({nome:a.nome,larg:pn(a.larg),alt:pn(a.alt),qtd:Math.max(0,Math.round(pn(a.qtd))),px:a.px||null,py:a.py||null,dpi:a.dpi||null})),metrosPng:arqs.length?mp.metros:null,consumoReal:{},codigo,tipo,lancado:reg?.lancado||{},horasLancadas:0,criadoEm,por:reg?.por||me,editadoEm:new Date().toISOString(),
     cancelado:cancelar?{em:new Date().toISOString(),por:me,motivo:motivoC}:(reg?.cancelado||null)};
-   await db.doc('impressoes/'+id).set(corpo);const r=await aplicarConsumo(db,{...corpo,id},ctx);await db.doc('impressoes/'+id).update(r);
-   toast(cancelar?'Descarte cancelado · matéria-prima devolvida ao estoque':novo?'Descarte lançado · matéria-prima abatida do estoque':'Descarte atualizado · estoque ajustado pela diferença');onClose()}
+   if(semB){await db.doc('impressoes/'+id).set({...corpo,semBaixa:true,lancado:{},consumoInfo:cancelar?{}:des,custoMateriais:cancelar?0:r2(total),custoDescarte:cancelar?0:r2(total)})}
+   else{await db.doc('impressoes/'+id).set(corpo);const r=await aplicarConsumo(db,{...corpo,id},ctx);await db.doc('impressoes/'+id).update(r)}
+   toast(semB?(cancelar?'Descarte cancelado':'Descarte atualizado'):cancelar?'Descarte cancelado · matéria-prima devolvida ao estoque':novo?'Descarte lançado · matéria-prima abatida do estoque':'Descarte atualizado · estoque ajustado pela diferença');onClose()}
   catch(e){toast('Erro: '+(e.message||e.code),1)}finally{setS(false)}};
  const so=k=>e=>setF({...f,[k]:e.target.value});const ed=pode('imprimir')&&!reg?.cancelado;
  return html`<${Modal} lg title=${novo?'Lançar descarte':'Descarte '+reg.codigo} sub=${reg?.cancelado?'Cancelado: '+reg.cancelado.motivo:'Metros impressos que não puderam ir para o cliente. A matéria-prima é abatida pela ficha do perfil.'} onClose=${onClose}>
@@ -4376,7 +4467,7 @@ function DescarteForm(ctx){const {db,reg,maquinas,insumos,pedidos,me,pode,toast,
    ${linhas.map(x=>html`<div key=${x.id} style=${{borderBottom:'1px solid var(--line)',paddingBottom:6}}><div className="row between sm"><b>${x.i.nome}</b><span className="tab">${num(x.q,3)} ${x.i.unidade}</span></div>
      <div className="row between sm mut"><span>saldo ${num(x.i.estoque,3)} ${x.i.unidade}</span>${vc&&html`<span className="tab">${moeda(x.v)}</span>`}</div></div>`)}
    ${vc&&linhas.length>0&&html`<div><div className="row between"><b>Custo do descarte</b><b className="tab" style=${{color:'var(--red2)'}}>${moeda(total)}</b></div><div className="sm mut">${met>0?moeda(total/met)+' por metro · ':''}pelo custo médio atual</div></div>`}
-   <div className="sm mut">${novo?'Ao lançar, essas quantidades saem do estoque.':'Ao salvar, só a diferença é lançada no estoque.'}</div>
+   <div className="sm mut">${semB?'Este descarte veio de um pedido impresso errado: a matéria-prima já tinha saído do estoque com o pedido, aqui só fica registrado o custo.':novo?'Ao lançar, essas quantidades saem do estoque.':'Ao salvar, só a diferença é lançada no estoque.'}</div>
    ${ed&&html`<button className="btn p" disabled=${s||!!erro} onClick=${()=>salvar(false)}>${s?'Lançando…':novo?'Lançar descarte e abater estoque':'Salvar e ajustar estoque'}</button>`}
    ${erro&&html`<div className="sm" style=${{color:'var(--red2)'}}>${erro}</div>`}
    ${!novo&&ed&&html`<button className="btn d" onClick=${()=>setCancel(true)}>Cancelar descarte (devolve ao estoque)</button>`}</div></div></div></fieldset>
