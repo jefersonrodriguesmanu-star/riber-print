@@ -31,6 +31,7 @@ h1{font-size:clamp(24px,5vw,32px);line-height:1.15;margin:0 0 4px}.sub{color:var
 .btn2{display:inline-flex;align-items:center;gap:6px;min-height:42px;border:1px solid var(--line);border-radius:10px;padding:0 14px;color:var(--ink);text-decoration:none;font-weight:600;background:#fff}
 .row{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--line);font-size:15px}.row:last-child{border:0}.mut{color:var(--mut)}.sm{font-size:13.5px}.tab{font-variant-numeric:tabular-nums}
 .msg{padding:12px 14px;border-radius:12px;font-size:15px}.msg.err{background:#fdecee;color:var(--red)}.msg.ok{background:#e9f7ef;color:var(--ok)}
+.mpb{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:52px;border:0;border-radius:12px;font:inherit;font-weight:700;font-size:16px;cursor:pointer;margin-top:10px;background:#009ee3;color:#fff}.mpb.alt{background:#fff;color:#0b4d8c;border:2px solid #009ee3}.mpb:disabled{opacity:.6;cursor:wait}
 .av{margin:0}.av .card{display:flex;gap:14px;align-items:flex-start}.av .ic2{font-size:28px;line-height:1;flex:none;width:36px;text-align:center}.av .card{border-color:#e9c6e6;background:linear-gradient(180deg,#fff,#fdf7fd)}.av b{display:block;font-size:16.5px}.av p{margin:4px 0 0;color:var(--mut);font-size:14.5px}
 .btn3{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:46px;border:0;border-radius:12px;padding:0 18px;margin-top:12px;background:var(--ink);color:#fff;font:700 15.5px Inter,system-ui,sans-serif;cursor:pointer}.lnk{background:none;border:0;padding:0;margin:10px 14px 0 0;color:var(--acc);font:600 14px Inter,system-ui,sans-serif;cursor:pointer;text-decoration:underline}
 </style>
@@ -56,12 +57,25 @@ function render(o){const cur=o.passos[o.atual]||o.passos[0];const wa=o.whatsapp?
   ${cur.k==='retirada'&&o.endereco?`<p class="sm" style="margin:12px 0 0">📍 Retire em: <b>${esc(o.endereco)}</b>${o.horario?'<br>🕒 '+esc(o.horario):''}</p>`:''}</div>
   <div class="card"><ul class="tl">${o.passos.map((x,i)=>`<li class="${x.ok?'ok':''} ${i===o.atual?'cur':''}"><div class="dot">${x.ok?'✓':''}</div><div><b>${esc(x.t)}</b><span>${x.ok?esc(x.d)+(x.em?' · '+dh(x.em):''):''}</span></div></li>`).join('')}</ul></div>`}
  h+=`<div class="card"><b>Resumo do pedido</b><div style="margin-top:8px">${(o.itens||[]).map(i=>`<div class="row"><span>${esc(i.descricao)}</span><span class="tab">${num(i.qtd,3)} ${UN[i.unidade]||''}</span></div>`).join('')}
-  ${o.total!=null?`<div class="row"><span>Total</span><b class="tab">${moeda(o.total)}</b></div>`:''}${o.numero&&o.total?`<div class="row"><span>Pagamento</span><span>${o.pago?'<b style="color:var(--ok)">Pago ✓</b>':o.saldo>0?'Falta '+moeda(o.saldo):'—'}</span></div>`:''}</div></div>`;
+  ${o.total!=null?`<div class="row"><span>Total</span><b class="tab">${moeda(o.total)}</b></div>`:''}${o.numero&&o.total?`<div class="row"><span>Pagamento</span><span>${o.pago?'<b style="color:var(--ok)">Pago ✓</b>':o.saldo>0?'Falta '+moeda(o.saldo):'—'}</span></div>`:''}</div></div>`+mpCard(o);
  if(wa)h+=`<a class="btn" href="${wa}" target="_blank" rel="noopener">💬 Ficou com alguma dúvida? Chame no WhatsApp</a>`;
  h+=`<p class="sm mut" style="text-align:center;margin-top:16px">Esta página se atualiza sozinha. Obrigado por escolher a ${esc(o.empresa)}!</p>`;
- const av=$('#avisos');if(av)av.remove();$('#app').innerHTML=h;if(av){const c1=$('#app .card');c1?c1.after(av):$('#app').append(av)}$('#upd').textContent='Atualizado '+dh(o.atualizado)}
-let ETAPA=null;async function carregar(){try{const o=await api({});const k=o.cancelado?'cancelado':(o.passos[o.atual]||{}).k;if(ETAPA&&k!==ETAPA)somRiber();ETAPA=k;render(o)}catch(e){if(!$('#app').dataset.ok)$('#app').innerHTML='<div class="msg err">'+esc(e.message)+'</div>'}}
-if(!P.t||(!P.p&&!P.s))$('#app').innerHTML='<div class="msg err">Link de acompanhamento inválido.</div>';else{carregar();setInterval(()=>{if(document.visibilityState==='visible')carregar()},45000)}
+ const av=$('#avisos');if(av)av.remove();$('#app').innerHTML=h;if(av){const c1=$('#app .card');c1?c1.after(av):$('#app').append(av)}$('#upd').textContent='Atualizado '+dh(o.atualizado);
+ document.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>pagarMP(b.dataset.m,b));if(PAGAR&&!ROLOU&&$('#pagar')){ROLOU=true;setTimeout(()=>$('#pagar').scrollIntoView({behavior:'smooth',block:'center'}),300)}}
+const RET=q.get('mp')==='retorno',PAGAR=q.get('pagar')==='1';let MPO=null,MPK='',ROLOU=false;
+async function mpapi(b){const r=await fetch(SB+'/functions/v1/mercadopago',{method:'POST',headers:{'Content-Type':'application/json',apikey:KEY,Authorization:'Bearer '+KEY},body:JSON.stringify({p:P.p,t:P.t,...b})});const j=await r.json().catch(()=>({erro:'Falha de conexão'}));if(!r.ok||j.erro)throw new Error(j.erro||'Erro');return j}
+function mpCard(o){let h='';
+ if(RET)h+=o.pago?`<div class="card"><div class="msg ok">✅ Pagamento confirmado! Obrigado.</div></div>`:`<div class="card"><div class="msg ok">⏳ Recebemos o retorno do Mercado Pago. Assim que o pagamento for confirmado, o status muda aqui sozinho (no PIX costuma levar poucos segundos).</div></div>`;
+ if(!MPO||!MPO.disponivel||o.pago)return h;
+ return h+`<div class="card" id="pagar"><b>💳 Pagar agora pelo Mercado Pago</b><p class="sm mut" style="margin:4px 0 0">Pagamento seguro. A confirmação aparece aqui automaticamente.</p>
+  ${MPO.pix?`<button class="mpb" data-m="pix">💠 Pagar com PIX · ${moeda(MPO.pix.valor)}</button>`:''}
+  ${MPO.cartao?`<button class="mpb alt" data-m="cartao">💳 Cartão de crédito · ${moeda(MPO.cartao.valor)}${MPO.cartao.parcelas>1?' em até '+MPO.cartao.parcelas+'x':''}</button>`:''}
+  ${MPO.cartao&&MPO.cartao.semDescontoPix?'<p class="sm mut" style="margin:8px 0 0">O desconto PIX vale só para pagamento em PIX.</p>':''}<p class="sm" id="mperr" style="color:var(--red);margin:8px 0 0"></p></div>`}
+async function pagarMP(m,b){b.disabled=true;const t0=b.textContent;b.textContent='Abrindo o Mercado Pago…';const e=$('#mperr');if(e)e.textContent='';
+ try{const r=await mpapi({acao:'pagar',metodo:m});location.href=r.url}catch(x){b.disabled=false;b.textContent=t0;if(e)e.textContent=x.message}}
+let ETAPA=null;async function carregar(){try{const o=await api({});
+ if(P.p&&o.numero&&!o.pago&&o.saldo>0&&!o.cancelado){const k=String(o.saldo);if(k!==MPK){MPK=k;try{MPO=await mpapi({acao:'opcoes'})}catch(_){MPO=null}}}else{MPO=null;MPK=''}const k=o.cancelado?'cancelado':(o.passos[o.atual]||{}).k;if(ETAPA&&k!==ETAPA)somRiber();ETAPA=k;render(o)}catch(e){if(!$('#app').dataset.ok)$('#app').innerHTML='<div class="msg err">'+esc(e.message)+'</div>'}}
+if(!P.t||(!P.p&&!P.s))$('#app').innerHTML='<div class="msg err">Link de acompanhamento inválido.</div>';else{carregar();setInterval(()=>{if(document.visibilityState==='visible')carregar()},45000);if(RET){let n=0;const iv=setInterval(()=>{if(++n>30)clearInterval(iv);carregar()},6000)}}
 
 /* ---------- avisos no celular (Web Push) + som da RIBER PRINT ---------- */
 const PUSH=SB+'/functions/v1/push';
