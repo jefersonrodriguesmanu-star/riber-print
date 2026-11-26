@@ -5281,11 +5281,19 @@ function endEntrega(p,cli){const d=p.destinatario||{};if(d.endereco)return{linha
 const endTexto=e=>[e.linha,e.bairro,e.cidade,e.cep&&'CEP '+String(e.cep).replace(/(\d{5})(\d{3})/,'$1-$2')].filter(Boolean).join(' · ');
 const mapaUrl=e=>'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(e.lat&&e.lng?e.lat+','+e.lng:[e.linha,e.bairro,e.cidade,'Brasil'].filter(Boolean).join(', '));
 const wazeUrl=e=>e.lat&&e.lng?'https://waze.com/ul?ll='+e.lat+','+e.lng+'&navigate=yes':'https://waze.com/ul?q='+encodeURIComponent([e.linha,e.cidade].filter(Boolean).join(', '))+'&navigate=yes';
+/* uma vez só: quando a etapa "Embalado" entrou, os pedidos que já estavam prontos (e ainda não saíram) foram marcados como embalados */
+async function migrarEmbalados({db,pedidos,cfg,toast}){if(cfg.embaladoMigrado||migrarEmbalados.rodou)return;migrarEmbalados.rodou=true;
+ try{const ref=db.doc('erp/config');const cur=await ref.get();const d=cur.exists?cur.data():{};if(d.embaladoMigrado)return;const ag=new Date().toISOString();
+  await ref.set({...d,embaladoMigrado:ag});
+  const alvo=pedidos.filter(p=>!p.cancelado&&p.origem!=='scalle'&&p.statusProd==='pronto'&&!p.embaladoEm&&['correios','transportadora','mercado_livre','entrega_local'].includes(p.entrega)&&!p.postadoEm&&p.etapaId!=='enviado'&&!p.saiuPostarEm&&!p.emRota);
+  for(const p of alvo)await db.doc('pedidos/'+p.id).update({embaladoEm:ag,embaladoPor:'Sistema',embaladoPorNome:'Sistema',historico:[...(p.historico||[]),{em:ag,por:'Sistema',tipo:'entrega',obs:'Marcado como embalado automaticamente (já estava pronto quando a etapa Embalado foi criada)'}]});
+  if(alvo.length)toast(alvo.length+' pedido(s) que já estavam prontos foram marcados como embalados')}catch(e){migrarEmbalados.rodou=false}}
 /* ---------------- expedição: enviar (frete), retirar (cliente busca) e entregar (nossos entregadores) ---------------- */
 function Expedicao(ctx){const [unif,setUnif]=useState(null);const ativosF=fechAtivos(ctx.fechamentos||[]);const outrosUnif=p=>(ctx.pedidos||[]).filter(x=>x.id!==p.id&&x.clienteId&&x.clienteId===p.clienteId&&!podeUnificar(x,ativosF));const {db,pedidos,clientes,cfg,me,pode,toast,abrir}=ctx;
  const [aba,setAba]=useState(()=>{try{return localStorage.getItem('rp_exp_aba')||'enviar'}catch(e){return 'enviar'}});const ir=a=>{setAba(a);try{localStorage.setItem('rp_exp_aba',a)}catch(e){}};
  const [sub,setSub]=useState('prontos');const [busca,setBusca]=useState('');const [dlg,setDlg]=useState(null);const [s,setS]=useState(false);
  const podeM=pode('mover')||pode('entregas');const cliDe=p=>clientes.find(c=>c.id===p.clienteId);const hoje=diaSP();
+ useEffect(()=>{if(podeM&&pedidos.length)migrarEmbalados({db,pedidos,cfg,toast})},[podeM,pedidos.length,cfg.embaladoMigrado]);
  const base=pedidos.filter(p=>!p.cancelado&&p.origem!=='scalle');
  const filtra=l=>l.filter(p=>!busca||(p.numero+' '+(p.clienteNome||'')+' '+(p.etiqueta?.rastreio||'')).toLowerCase().includes(busca.toLowerCase()));
  const et=id=>cfg.etapas.find(e=>e.id===id);const etEnt=et('entregue')||cfg.etapas.find(e=>e.status==='entregue'&&!e.cancela);
@@ -5386,6 +5394,7 @@ function Expedicao(ctx){const [unif,setUnif]=useState(null);const ativosF=fechAt
 
 function Entregas(ctx){const {db,pedidos,clientes,cfg,me,pode,toast,produtos,abrir,user}=ctx;const [aba,setAba]=useState('fila');const [conf,setConf]=useState(null);const [busca,setBusca]=useState('');
  const podeEnt=pode('entregas')||pode('mover');
+ useEffect(()=>{if(podeEnt&&pedidos.length)migrarEmbalados({db,pedidos,cfg,toast})},[podeEnt,pedidos.length,cfg.embaladoMigrado]);
  const locais=pedidos.filter(p=>p.entrega==='entrega_local'&&!p.cancelado);const hoje=diaSP();
  const nomeEq=me;const cliDe=p=>clientes.find(c=>c.id===p.clienteId);
  const filtra=l=>l.filter(p=>!busca||(p.numero+' '+(p.clienteNome||'')+' '+endTexto(endEntrega(p,cliDe(p)))).toLowerCase().includes(busca.toLowerCase()));
