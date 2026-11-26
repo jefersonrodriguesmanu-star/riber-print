@@ -3292,11 +3292,12 @@ function CotarFrete({cfg,cli,t,cep,onClose,onEscolher}){const F0={...FRETE_PADRA
 
 /* ---- pedido com artes feito pela equipe: PNGs + cliente + entrega, igual ao link dos clientes ---- */
 function MontagemPedido({p,cfg,toast}){const [urls,setUrls]=useState({});
- useEffect(()=>{if(!window.RP_SB||!window.RP_SB.storage)return;let vivo=true;(async()=>{const o={};for(const a of p.arquivos||[]){if(!a.path)continue;try{const u=await urlArte(a);if(u)o[a.path]=u}catch(e){}}if(vivo)setUrls(o)})();return()=>{vivo=false}},[p.id]);
+ useEffect(()=>{if(!window.RP_SB||!window.RP_SB.storage)return;let vivo=true;(async()=>{const o={};for(const a of p.arquivos||[]){if(!a.path)continue;try{const u=await urlArte(a);if(u)o[a.path]=u}catch(e){}}if(vivo)setUrls(o)})();return()=>{vivo=false}},[p.id,(p.arquivos||[]).length]);
  if(!(p.arquivos||[]).some(a=>a.path))return null;
- if(!p.montagem&&p.arquivos.every(a=>a.montado))return html`<div className="card pad"><div className="row between" style=${{marginBottom:8}}><b>🖨️ Arquivo pronto para imprimir</b><span className="sm mut">PNG 300 DPI sem fundo, já montado</span></div>
-  ${p.arquivos.map(a=>html`<div key=${a.path} className="row between" style=${{padding:'8px 0',borderTop:'1px solid var(--line)',gap:8}}><div><div className="b sm" style=${{wordBreak:'break-all'}}>${a.nome}</div><div className="sm mut tab">${[a.metros?num(a.metros)+' m':'',a.tamanho?num(a.tamanho/1048576,1)+' MB':''].filter(Boolean).join(' · ')}</div></div><button className="btn sm p" onClick=${()=>baixarArte(a,toast)}><${Ic} n="dl" s=${13}/>Baixar PNG</button></div>`)}</div>`;
- return html`<${MontagemOnline} x=${p} cfg=${cfg} urls=${urls} toast=${toast}/>`}
+ const soltos=p.arquivos.filter(a=>a.path&&(a.montado||a.impresso));const temM=temMontagem(p,cfg);const unif=(p.unificados||[]).length>0;
+ const lista=soltos.length>0&&html`<div className="card pad"><div className="row between" style=${{marginBottom:8,gap:8,flexWrap:'wrap'}}><b>${soltos.every(a=>a.montado&&!a.impresso)?'🖨️ Arquivo pronto para imprimir':'Outros arquivos deste pedido'}</b><span className="sm mut">${soltos.some(a=>a.impresso)?'os já impressos não voltam para a fila':'PNG 300 DPI sem fundo, já montado'}</span></div>
+  ${soltos.map(a=>html`<div key=${a.path} className="row between" style=${{padding:'8px 0',borderTop:'1px solid var(--line)',gap:8}}><div><div className="b sm" style=${{wordBreak:'break-all'}}>${a.nome}</div><div className="sm mut tab">${[unif&&a.doPedido?'pedido #'+a.doPedido:'',a.impresso?'já impresso':'',a.metros?num(a.metros)+' m':'',a.tamanho?num(a.tamanho/1048576,1)+' MB':''].filter(Boolean).join(' · ')}</div></div><button className="btn sm p" onClick=${()=>baixarArte(a,toast)}><${Ic} n="dl" s=${13}/>Baixar PNG</button></div>`)}</div>`;
+ return html`<div style=${{display:'grid',gap:12}}>${unif&&html`<div className="sm mut">🔗 Pedido unificado: ${p.arquivos.length} PNG somados dos pedidos #${[p.numero,...p.unificados.map(u=>u.numero)].join(', #')}.</div>`}${temM&&html`<${MontagemOnline} x=${p} cfg=${cfg} urls=${urls} toast=${toast}/>`}${lista}</div>`}
 function PedidoArtes(ctxA){const {db,cfg,clientes,produtos,pedidos,me,pode,toast,abrir,setForm,colaboradores=[],diretor,meuNome}=ctxA;const [eq,setEq]=useState({vendedor:meuNome||'',operador:'',designer:diretor?'':meuNome||'',designerTipo:'png'});const P=cfg.portal||{};const W=Number(P.largura||57.899);
  const prod=useMemo(()=>produtos.find(x=>x.id===P.produtoId)||produtos.find(x=>x.id==='pr-dtf-metro')||produtos.find(x=>x.ativo!==false&&x.tipoDtf==='textil'&&x.unidade==='metro_linear'),[produtos]);
  const [cid,setCid]=useState('');const [q,setQ]=useState('');const [abre,setAbre]=useState(false);
@@ -5645,10 +5646,17 @@ function juntarPedidos(main,secs,cfg){const et=(cfg.etapas||[]).map(e=>e.id);con
   const etapas=todos.map(p=>p.etapaId).filter(Boolean);etapaId=etapas.sort((a,b)=>et.indexOf(a)-et.indexOf(b))[0]||main.etapaId;
   const ult=hist.slice().sort((a,b)=>String(b.em).localeCompare(String(a.em)))[0];imp=ult?{impressoEm:ult.em,impressoMt:0,imprimindoEm:null}:{};
  }
+ const W0=Number(main.larguraRolo||(main.montagem&&main.montagem.W)||secs.map(x=>x.larguraRolo).find(Boolean)||(cfg.portal||{}).largura)||57.899,esp0=Number(main.espaco??(cfg.portal||{}).espaco??0.5);
+ const arquivos=[],mPecas=[];let yM=0;
+ for(const p of todos){const base=arquivos.length;const jaImp=pendMt>0&&(impressoP(p)||['pronto','entregue'].includes(p.statusProd));
+  for(const a of p.arquivos||[])arquivos.push({...a,doPedido:a.doPedido||p.numero,...(jaImp&&!a.montado?{impresso:true}:{})});
+  if(jaImp)continue;const M=montagemSolic(p,cfg);if(!M||!M.pecas.length)continue;
+  for(const pc of M.pecas)if(pc.i!=null)mPecas.push([base+pc.i,r3(pc.x),r3(yM+pc.y),r3(pc.w),r3(pc.h),pc.rot?1:0]);yM=r3(yM+Number(M.comp||0)+esp0)}
+ const montagem=mPecas.length?{W:W0,comp:r3(Math.max(0,yM-esp0)),pecas:mPecas}:null;
  const txt=(k,sep)=>todos.map(p=>String(p[k]||'').trim()).filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(sep);
  const prodEm=todos.map(p=>p.producaoEm).filter(Boolean).sort()[0];const consEm=todos.map(p=>p.consumoEm).filter(Boolean).sort()[0];
  return{...main,itens,ordens,consumoLancado:lanc,statusProd,etapaId,etapaDesde:etapaId!==main.etapaId?ag:main.etapaDesde,...imp,impressoHist:hist,mtParcial:r3(sum(todos,p=>Number(p.mtParcial)||0)),pausas:todos.flatMap(p=>p.pausas||[]),arquivosImpressos:todos.flatMap(p=>p.arquivosImpressos||[]),pausadoEm:pendMt>0?(todos.find(p=>p.pausadoEm)||{}).pausadoEm||null:null,...(prodEm?{producaoEm:prodEm}:{}),...(consEm?{consumoEm:consEm}:{}),
-  arquivos:todos.flatMap(p=>p.arquivos||[]),pagamentos:[...(main.pagamentos||[]),...secs.flatMap(s=>(s.pagamentos||[]).map(x=>({...x,obs:[x.obs,'veio do pedido #'+s.numero].filter(Boolean).join(' · ')})))],
+  arquivos,montagem,larguraRolo:W0,espaco:esp0,pagamentos:[...(main.pagamentos||[]),...secs.flatMap(s=>(s.pagamentos||[]).map(x=>({...x,obs:[x.obs,'veio do pedido #'+s.numero].filter(Boolean).join(' · ')})))],
   desconto:r2(sum(todos,p=>Number(p.desconto||0))),custoExtra:r2(sum(todos,p=>Number(p.custoExtra||0))),frete:r2(sum(todos,p=>Number(p.frete||0))),
   autorizado:todos.some(p=>p.autorizado),obsInterna:txt('obsInterna',' | '),obsCliente:txt('obsCliente',' | '),
   unificados:[...(main.unificados||[]),...secs.map(s=>({id:s.id,numero:s.numero,em:ag}))]}}
@@ -5657,9 +5665,9 @@ async function unificarPedidos(db,mainId,secIds,cfg,me){const lerP=async id=>{co
  for(const p of [main,...secs]){const m=podeUnificar(p);if(m)throw new Error('Pedido #'+p.numero+': '+m)}
  if(secs.some(s=>s.clienteId!==main.clienteId))throw new Error('Só dá para unificar pedidos do mesmo cliente');
  const ag=new Date().toISOString();const nums=secs.map(s=>'#'+s.numero).join(', ');
- const j=juntarPedidos(main,secs,cfg);j.historico=[...(main.historico||[]),{em:ag,por:me,tipo:'edicao',obs:'Unificado com '+nums+': itens, artes e pagamentos somados neste pedido'+(j.impressoEm===null&&j.impressoHist.length?' · voltou para a fila de impressão com '+num(metrosP(j))+' m (os já impressos não entram de novo)':'')}];
+ const j=juntarPedidos(main,secs,cfg);j.historico=[...(main.historico||[]),{em:ag,por:me,tipo:'edicao',obs:'Unificado com '+nums+': itens, artes ('+(j.arquivos||[]).length+' PNG) e pagamentos somados neste pedido'+(j.impressoEm===null&&j.impressoHist.length?' · voltou para a fila de impressão com '+num(metrosP(j))+' m (os já impressos não entram de novo)':'')}];
  const {id:_m,...cm}=normalizar(j,me);await db.doc('pedidos/'+mainId).set(cm);
- for(const s of secs){const {id:_s,...cs}=normalizar({...s,itens:[],arquivos:[],pagamentos:[],ordens:{},consumoLancado:{},impressoEm:null,impressoMt:null,impressoHist:[],imprimindoEm:null,frete:0,desconto:0,custoExtra:0,cancelado:{em:ag,por:me,motivo:'Unificado no pedido #'+main.numero},unificadoEm:{id:mainId,numero:main.numero,em:ag,por:me},
+ for(const s of secs){const {id:_s,...cs}=normalizar({...s,itens:[],arquivos:[],arquivosUnificados:s.arquivos||[],pagamentos:[],ordens:{},consumoLancado:{},impressoEm:null,impressoMt:null,impressoHist:[],imprimindoEm:null,frete:0,desconto:0,custoExtra:0,cancelado:{em:ag,por:me,motivo:'Unificado no pedido #'+main.numero},unificadoEm:{id:mainId,numero:main.numero,em:ag,por:me},
    historico:[...(s.historico||[]),{em:ag,por:me,tipo:'cancelamento',obs:'Unificado no pedido #'+main.numero+' (itens, artes e pagamentos foram para lá)'}]},me);await db.doc('pedidos/'+s.id).set(cs)}
  return{...cm,id:mainId}}
 function UnificarDlg({db,p,pedidos,clientes,fechamentos=[],cfg,me,toast,onClose,abrir}){const ativos=fechAtivos(fechamentos);const cli=clientes.find(c=>c.id===p.clienteId);
@@ -6064,12 +6072,16 @@ function PedidosOnline(ctx){const {db,solicitacoes=[],clientes,pedidos,produtos,
     <td className="sm">${x.entrega==='envio'?(x.frete?x.frete.empresa+' '+x.frete.servico+' · '+moeda(x.frete.preco):'Envio (frete a cotar)'):'Retirada'}</td><td><${Badge} c=${(ST_SOL[x.status]||[])[1]}>${(ST_SOL[x.status]||[x.status])[0]}<//></td></tr>`)}</tbody></table></div>`}</div>
   ${ver&&html`<${SolicitacaoDetalhe} ...${ctx} id=${ver} onClose=${()=>setVer(null)}/>`}</div>`}
 /* ---- montagem do pedido online: a mesma fila que o cliente viu, pronta para baixar em PNG 300 DPI ---- */
-function montagemSolic(x,cfg){const arqs=x.arquivos||[];if(!arqs.length)return null;
- if(x.montagem&&Array.isArray(x.montagem.pecas)&&x.montagem.pecas.length)return{W:Number(x.montagem.W)||Number(x.larguraRolo)||57.899,comp:Number(x.montagem.comp),igual:true,
-  pecas:x.montagem.pecas.filter(q=>arqs[q[0]]).map(q=>({x:q[1],y:q[2],w:q[3],h:q[4],rot:!!q[5],ref:{arquivo:arqs[q[0]].path}}))};
+/* Artes que entram na montagem: não são folhas já montadas nem artes de um pedido unificado que já foi impresso. */
+function montagemSolic(x,cfg){const arqs=x.arquivos||[];const usar=i=>{const a=arqs[i];return !!(a&&a.path&&!a.montado&&!a.impresso)};const idxs=arqs.map((_,i)=>i).filter(usar);if(!idxs.length)return null;
+ if(x.montagem&&Array.isArray(x.montagem.pecas)&&x.montagem.pecas.length){const ps=x.montagem.pecas.filter(q=>usar(q[0]));const cob=new Set(ps.map(q=>q[0]));
+  /* a montagem salva só vale se tiver TODAS as artes (pedidos unificados antes da correção tinham só as do 1º pedido) */
+  if(ps.length&&idxs.every(i=>cob.has(i)))return{W:Number(x.montagem.W)||Number(x.larguraRolo)||57.899,comp:Number(x.montagem.comp),igual:!(x.unificados||[]).length,
+   pecas:ps.map(q=>({i:q[0],x:q[1],y:q[2],w:q[3],h:q[4],rot:!!q[5],ref:{arquivo:arqs[q[0]].path}}))}}
  const W=Number(x.larguraRolo)||57.899,esp=Number(x.espaco??0.5),bor=Number((cfg.portal||{}).borda||0);
- const r=encaixar(arqs.map(a=>({w:Number(a.larguraCm),h:Number(a.alturaCm),qtd:Number(a.qtd)||1,girar:a.girar!==false,ref:{arquivo:a.path}})),W,esp,bor);if(r.erro)return null;
- return{W,comp:r.comp,pecas:r.pecas,igual:false}}
+ const ok=idxs.filter(i=>Number(arqs[i].larguraCm)>0&&Number(arqs[i].alturaCm)>0);if(!ok.length)return null;
+ const r=encaixar(ok.map(i=>{const a=arqs[i];return{w:Number(a.larguraCm),h:Number(a.alturaCm),qtd:Number(a.qtd)||1,girar:a.girar!==false,ref:{arquivo:a.path,i}}}),W,esp,bor);if(r.erro)return null;
+ return{W,comp:r.comp,pecas:r.pecas.map(pc=>({...pc,i:pc.ref&&pc.ref.i})),igual:false}}
 async function baixarMontagemSolic({x,cfg,maxCm=500,prog}){const M=montagemSolic(x,cfg);if(!M||!M.pecas.length)throw new Error('Este pedido não tem artes para montar');
  if(!window.RP_SB)throw new Error('Disponível no sistema online');if(typeof CompressionStream==='undefined')throw new Error('Este navegador não consegue gerar o PNG. Use o Chrome atualizado.');
  const dpi=300,px=cm=>Math.round(cm/2.54*dpi),Wpx=px(M.W),esp=Number(x.espaco??0.5);const segs=segmentosPecas(M.pecas,M.comp,Math.min(maxCm,500),esp);const n=segs.length;const bms={};
@@ -6080,13 +6092,14 @@ async function baixarMontagemSolic({x,cfg,maxCm=500,prog}){const M=montagemSolic
    baixarBlob(blob,nome+(n>1?'-parte'+(i+1)+'de'+n+'-'+num((y1-y0)/100)+'m':'')+'.png');await new Promise(r=>setTimeout(r,500))}}
  finally{for(const k in bms)try{bms[k].close()}catch(e){}}return n}
 /* baixar para imprimir: a folha já montada (não as artes separadas) */
-const temMontagem=(p,cfg)=>{try{if((p.arquivos||[]).length&&p.arquivos.every(a=>a.montado))return false;const M=montagemSolic(p,cfg);return !!(M&&M.pecas&&M.pecas.length)}catch(e){return false}};
-async function baixarPedidoPng(p,cfg,toast,prog){try{if((p.arquivos||[]).length&&p.arquivos.every(a=>a.montado))return await baixarTodas(p.arquivos,toast,nomeObs(p)||null);
-  if(temMontagem(p,cfg)){prog&&prog('Montando…');const n=await baixarMontagemSolic({x:p,cfg,maxCm:500,prog});toast(n>1?'Folha montada baixada em '+n+' partes de até 5 m':'Folha montada baixada (PNG 300 DPI)');return}
+const temMontagem=(p,cfg)=>{try{const M=montagemSolic(p,cfg);return !!(M&&M.pecas&&M.pecas.length)}catch(e){return false}};
+const folhasProntas=p=>(p.arquivos||[]).filter(a=>a.path&&a.montado&&!a.impresso);
+async function baixarPedidoPng(p,cfg,toast,prog){try{const fl=folhasProntas(p);const tm=temMontagem(p,cfg);if(fl.length&&!tm)return await baixarTodas(fl,toast,nomeObs(p)||null);
+  if(tm){prog&&prog('Montando…');const n=await baixarMontagemSolic({x:p,cfg,maxCm:500,prog});toast(n>1?'Folha montada baixada em '+n+' partes de até 5 m':'Folha montada baixada (PNG 300 DPI)');if(fl.length){await espera(500);await baixarTodas(fl,toast)}return}
   await baixarTodas(p.arquivos||[],toast)}catch(e){toast(e.message||'Erro ao gerar o PNG',1)}finally{prog&&prog('')}}
-function BaixarPngBtn({p,cfg,toast,cls='btn',txt}){const [pr,setPr]=useState('');const mont=temMontagem(p,cfg)||((p.arquivos||[]).length&&p.arquivos.every(a=>a.montado));
+function BaixarPngBtn({p,cfg,toast,cls='btn',txt}){const [pr,setPr]=useState('');const mont=temMontagem(p,cfg)||folhasProntas(p).length>0;
  return html`<button className=${cls} disabled=${!!pr} onClick=${()=>baixarPedidoPng(p,cfg,toast,setPr)}><${Ic} n="dl" s=${14}/>${pr||txt||(mont?'Baixar PNG montado':'Baixar artes ('+(p.arquivos||[]).length+')')}</button>`}
-function MontagemOnline({x,cfg,urls,toast}){const M=useMemo(()=>montagemSolic(x,cfg),[x.id,x.montagem]);const ref=useRef(null);const [prog,setProg]=useState('');const [maxCm,setMaxCm]=useState('500');
+function MontagemOnline({x,cfg,urls,toast}){const M=useMemo(()=>montagemSolic(x,cfg),[x.id,x.montagem,x.arquivos]);const ref=useRef(null);const [prog,setProg]=useState('');const [maxCm,setMaxCm]=useState('500');
  useEffect(()=>{const cv=ref.current;if(!cv||!M)return;let vivo=true;(async()=>{const cw=cv.clientWidth||600;const k=cw/M.W;const ch=Math.min(Math.max(M.comp*k,120),520);const kk=Math.min(k,ch/M.comp);const dpr=window.devicePixelRatio||1;cv.width=cw*dpr;cv.height=ch*dpr;cv.style.height=ch+'px';
   const g=cv.getContext('2d');if(!g)return;g.scale(dpr,dpr);const ox=(cw-M.W*kk)/2;g.fillStyle='rgba(127,127,127,.12)';g.fillRect(ox,0,M.W*kk,ch);const ims={};
   for(const p of M.pecas.slice(0,800)){const u=urls[p.ref.arquivo];let im=null;if(u){im=ims[u]||(ims[u]=await new Promise(r=>{const i=new Image();i.crossOrigin='anonymous';i.onload=()=>r(i);i.onerror=()=>r(null);i.src=u}))}if(!vivo)return;
